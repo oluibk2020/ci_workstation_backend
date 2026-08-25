@@ -1,0 +1,466 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  STAFF
+  SUPER_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  BANNED
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum BranchStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum WorkstationStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum SeatStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum BookingType {
+  CONTINUOUS
+  FLEXIBLE
+}
+
+enum BookingStatus {
+  ACTIVE
+  CANCELLED
+  COMPLETED
+  EXPIRED
+}
+
+enum BookingDateStatus {
+  ACTIVE
+  CANCELLED
+  REASSIGNED
+  COMPLETED
+  EXPIRED
+}
+
+enum WalletTransactionType {
+  PAYSTACK_FUNDING
+  CASH_FUNDING
+  BOOKING_DEBIT
+  BOOKING_CANCELLATION_CREDIT
+  ADMIN_ADJUSTMENT_CREDIT
+  ADMIN_ADJUSTMENT_DEBIT
+}
+
+enum TransactionDirection {
+  CREDIT
+  DEBIT
+}
+
+enum PaymentStatus {
+  INITIATED
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum PaymentProvider {
+  PAYSTACK
+}
+
+enum QRStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum CheckInStatus {
+  CHECKED_IN
+  CHECKED_OUT
+}
+
+enum CheckInSource {
+  QR
+}
+
+enum NotificationType {
+  BOOKING_CREATED
+  BOOKING_CANCELLED
+  BOOKING_REASSIGNED
+  WALLET_FUNDED
+  CHECK_IN
+  CHECK_OUT
+  VERIFICATION
+  ACCOUNT
+  SYSTEM
+}
+
+enum IDDocumentType {
+  NATIONAL_ID
+  PASSPORT
+  DRIVERS_LICENSE
+  VOTERS_CARD
+  OTHERS
+}
+
+enum DocumentStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum TwoFactorMethod {
+  TOTP
+}
+
+model User {
+  id                 String             @id @default(uuid()) @db.Uuid
+  name               String
+  email              String             @unique
+  passwordHash       String?
+  role               Role               @default(USER)
+  status             UserStatus         @default(ACTIVE)
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  profileImageUrl    String?
+  emailVerifiedAt    DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  wallet             Wallet?
+  walletTransactions WalletTransaction[]
+  payments           Payment[]
+
+  bookingsMade     Booking[] @relation("BookingsMade")
+  bookingsReceived Booking[] @relation("BookingsReceived")
+
+  qrCodes               QRCode[]
+  identityVerifications IdentityVerification[]
+  idDocuments           IDDocument[]
+
+  checkIns          CheckIn[]              @relation("CheckInUser")
+  verificationsMade IdentityVerification[] @relation("VerificationReviewer")
+  checkInsVerified  CheckIn[]              @relation("CheckInVerifier")
+
+  notifications Notification[]
+  auditLogs     AuditLog[]     @relation("AuditActor")
+  twoFactorAuth TwoFactorAuth?
+
+  reassignments BookingReassignment[] @relation("ReassignmentRequester")
+}
+
+model Wallet {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @db.Uuid
+  balance   Decimal  @default(0) @db.Decimal(18, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  transactions WalletTransaction[]
+}
+
+model WalletTransaction {
+  id            String                @id @default(uuid()) @db.Uuid
+  walletId      String                @db.Uuid
+  userId        String                @db.Uuid
+  type          WalletTransactionType
+  direction     TransactionDirection
+  amount        Decimal               @db.Decimal(18, 2)
+  balanceBefore Decimal               @db.Decimal(18, 2)
+  balanceAfter  Decimal               @db.Decimal(18, 2)
+  reference     String?
+  bookingId     String?               @db.Uuid
+  paymentId     String?               @db.Uuid
+  description   String?
+  createdAt     DateTime              @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  wallet  Wallet   @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  payment Payment? @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@index([walletId, createdAt])
+  @@index([userId, createdAt])
+  @@index([bookingId])
+  @@index([paymentId])
+  @@index([reference])
+}
+
+model Payment {
+  id                String          @id @default(uuid()) @db.Uuid
+  userId            String          @db.Uuid
+  amount            Decimal         @db.Decimal(18, 2)
+  status            PaymentStatus   @default(INITIATED)
+  provider          PaymentProvider @default(PAYSTACK)
+  providerReference String          @unique
+  channel           String?
+  metadata          Json?
+  paidAt            DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  user               User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  walletTransactions WalletTransaction[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model Branch {
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String
+  address     String
+  timezone    String
+  openingTime String
+  closingTime String
+  status      BranchStatus @default(ACTIVE)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  workstations Workstation[]
+  bookings     Booking[]
+
+  @@index([status])
+}
+
+model Workstation {
+  id          String            @id @default(uuid()) @db.Uuid
+  branchId    String            @db.Uuid
+  name        String
+  pricePerDay Decimal           @db.Decimal(18, 2)
+  status      WorkstationStatus @default(ACTIVE)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  branch   Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  seats    Seat[]
+  bookings Booking[]
+
+  @@index([branchId])
+  @@index([status])
+}
+
+model Seat {
+  id            String     @id @default(uuid()) @db.Uuid
+  workstationId String     @db.Uuid
+  seatId        String
+  status        SeatStatus @default(ACTIVE)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  workstation Workstation @relation(fields: [workstationId], references: [id], onDelete: Restrict)
+  bookings    Booking[]
+
+  @@unique([workstationId, seatId])
+  @@index([workstationId, status])
+}
+
+model Booking {
+  id                String        @id @default(uuid()) @db.Uuid
+  bookedByUserId    String        @db.Uuid
+  beneficiaryUserId String        @db.Uuid
+  branchId          String        @db.Uuid
+  workstationId     String        @db.Uuid
+  seatId            String        @db.Uuid
+  type              BookingType
+  startDate         DateTime      @db.Date
+  endDate           DateTime      @db.Date
+  totalAmount       Decimal       @db.Decimal(18, 2)
+  status            BookingStatus @default(ACTIVE)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  bookedBy    User        @relation("BookingsMade", fields: [bookedByUserId], references: [id], onDelete: Restrict)
+  beneficiary User        @relation("BookingsReceived", fields: [beneficiaryUserId], references: [id], onDelete: Restrict)
+  branch      Branch      @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  workstation Workstation @relation(fields: [workstationId], references: [id], onDelete: Restrict)
+  seat        Seat        @relation(fields: [seatId], references: [id], onDelete: Restrict)
+
+  dates              BookingDate[]
+  reassignments      BookingReassignment[]
+  walletTransactions WalletTransaction[]
+
+  @@index([beneficiaryUserId, startDate, endDate])
+  @@index([bookedByUserId, createdAt])
+  @@index([branchId, startDate])
+  @@index([workstationId, startDate])
+  @@index([seatId, startDate])
+  @@index([status])
+}
+
+model BookingDate {
+  id          String            @id @default(uuid()) @db.Uuid
+  bookingId   String            @db.Uuid
+  bookingDate DateTime          @db.Date
+  amount      Decimal           @db.Decimal(18, 2)
+  status      BookingDateStatus @default(ACTIVE)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  booking Booking  @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  checkIn CheckIn?
+
+  @@unique([bookingId, bookingDate])
+  @@index([bookingDate])
+  @@index([status, bookingDate])
+}
+
+model BookingReassignment {
+  id                 String   @id @default(uuid()) @db.Uuid
+  bookingId          String   @db.Uuid
+  requestedByUserId  String   @db.Uuid
+  operationReference String   @unique
+  fromDate           DateTime @db.Date
+  toDate             DateTime @db.Date
+  fromBranchId       String?  @db.Uuid
+  toBranchId         String?  @db.Uuid
+  fromSeatId         String?  @db.Uuid
+  toSeatId           String?  @db.Uuid
+  createdAt          DateTime @default(now())
+
+  booking     Booking @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  requestedBy User    @relation("ReassignmentRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([bookingId, createdAt])
+  @@index([requestedByUserId, createdAt])
+}
+
+model QRCode {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  tokenHash   String    @unique
+  status      QRStatus  @default(ACTIVE)
+  generatedAt DateTime  @default(now())
+  revokedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, status])
+}
+
+model IdentityVerification {
+  id               String             @id @default(uuid()) @db.Uuid
+  userId           String             @db.Uuid
+  status           VerificationStatus @default(UNVERIFIED)
+  submittedAt      DateTime?
+  verifiedAt       DateTime?
+  verifiedByUserId String?            @db.Uuid
+  rejectionReason  String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  user       User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  verifiedBy User?        @relation("VerificationReviewer", fields: [verifiedByUserId], references: [id], onDelete: Restrict)
+  documents  IDDocument[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model IDDocument {
+  id             String         @id @default(uuid()) @db.Uuid
+  userId         String         @db.Uuid
+  verificationId String?        @db.Uuid
+  type           IDDocumentType
+  documentNumber String?
+  documentUrl    String
+  status         DocumentStatus @default(PENDING)
+  submittedAt    DateTime       @default(now())
+  reviewedAt     DateTime?
+
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  verification IdentityVerification? @relation(fields: [verificationId], references: [id], onDelete: Restrict)
+
+  @@index([userId, status])
+  @@index([verificationId])
+}
+
+model CheckIn {
+  id               String        @id @default(uuid()) @db.Uuid
+  bookingDateId    String        @unique @db.Uuid
+  userId           String        @db.Uuid
+  branchId         String        @db.Uuid
+  seatId           String        @db.Uuid
+  status           CheckInStatus @default(CHECKED_IN)
+  source           CheckInSource @default(QR)
+  checkedInAt      DateTime      @default(now())
+  checkedOutAt     DateTime?
+  verifiedByUserId String?       @db.Uuid
+
+  bookingDate BookingDate @relation(fields: [bookingDateId], references: [id], onDelete: Restrict)
+  user        User        @relation("CheckInUser", fields: [userId], references: [id], onDelete: Restrict)
+  verifier    User?       @relation("CheckInVerifier", fields: [verifiedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([userId, checkedInAt])
+  @@index([branchId, checkedInAt])
+  @@index([seatId, checkedInAt])
+}
+
+model Notification {
+  id          String           @id @default(uuid()) @db.Uuid
+  userId      String           @db.Uuid
+  type        NotificationType
+  title       String
+  message     String
+  readAt      DateTime?
+  emailSentAt DateTime?
+  metadata    Json?
+  createdAt   DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?  @db.Uuid
+  action      String
+  entityType  String
+  entityId    String?  @db.Uuid
+  metadata    Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  actor User? @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([actorUserId, createdAt])
+  @@index([entityType, entityId])
+  @@index([action, createdAt])
+}
+
+model TwoFactorAuth {
+  id              String          @id @default(uuid()) @db.Uuid
+  userId          String          @unique @db.Uuid
+  enabled         Boolean         @default(false)
+  method          TwoFactorMethod
+  secretEncrypted String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+}
