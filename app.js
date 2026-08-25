@@ -23,7 +23,7 @@ app.use(express.json());
 // app.use("/password", passwordReset);
 
 // Error handling
-const error = require("./middleware/error");
+const error = require("./middleware/errorMiddleware");
 
 app.use(error);
 
