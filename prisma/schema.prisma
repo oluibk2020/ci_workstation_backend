@@ -152,6 +152,8 @@ model User {
   walletTransactions WalletTransaction[]
   payments           Payment[]
 
+  bookingDates BookingDate[]
+
   bookingsMade     Booking[] @relation("BookingsMade")
   bookingsReceived Booking[] @relation("BookingsReceived")
 
@@ -230,15 +232,16 @@ model Payment {
 }
 
 model Branch {
-  id          String       @id @default(uuid()) @db.Uuid
-  name        String
-  address     String
-  timezone    String
-  openingTime String
-  closingTime String
-  status      BranchStatus @default(ACTIVE)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id            String       @id @default(uuid()) @db.Uuid
+  name          String
+  address       String
+  timezone      String
+  openingTime   String
+  closingTime   String
+  operatingDays Json
+  status        BranchStatus @default(ACTIVE)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   workstations Workstation[]
   bookings     Booking[]
@@ -271,8 +274,9 @@ model Seat {
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
-  workstation Workstation @relation(fields: [workstationId], references: [id], onDelete: Restrict)
-  bookings    Booking[]
+  workstation  Workstation   @relation(fields: [workstationId], references: [id], onDelete: Restrict)
+  bookings     Booking[]
+  bookingDates BookingDate[]
 
   @@unique([workstationId, seatId])
   @@index([workstationId, status])
@@ -312,16 +316,21 @@ model Booking {
 }
 
 model BookingDate {
-  id          String            @id @default(uuid()) @db.Uuid
-  bookingId   String            @db.Uuid
-  bookingDate DateTime          @db.Date
-  amount      Decimal           @db.Decimal(18, 2)
-  status      BookingDateStatus @default(ACTIVE)
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  id                String            @id @default(uuid()) @db.Uuid
+  bookingId         String            @db.Uuid
+  bookingDate       DateTime          @db.Date
+  seatId            String            @db.Uuid
+  beneficiaryUserId String            @db.Uuid
+  amount            Decimal           @db.Decimal(18, 2)
+  status            BookingDateStatus @default(ACTIVE)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
   booking Booking  @relation(fields: [bookingId], references: [id], onDelete: Restrict)
   checkIn CheckIn?
+
+  seat        Seat @relation(fields: [seatId], references: [id], onDelete: Restrict)
+  beneficiary User @relation(fields: [beneficiaryUserId], references: [id], onDelete: Restrict)
 
   @@unique([bookingId, bookingDate])
   @@index([bookingDate])
@@ -332,7 +341,7 @@ model BookingReassignment {
   id                 String   @id @default(uuid()) @db.Uuid
   bookingId          String   @db.Uuid
   requestedByUserId  String   @db.Uuid
-  operationReference String   @unique
+  operationReference String
   fromDate           DateTime @db.Date
   toDate             DateTime @db.Date
   fromBranchId       String?  @db.Uuid
@@ -346,6 +355,7 @@ model BookingReassignment {
 
   @@index([bookingId, createdAt])
   @@index([requestedByUserId, createdAt])
+  @@index([operationReference])
 }
 
 model QRCode {
@@ -463,4 +473,12 @@ model TwoFactorAuth {
   updatedAt       DateTime        @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+}
+
+model SystemConfig {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
