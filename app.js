@@ -11,16 +11,37 @@ app.use(
   }),
 );
 
+app.use(
+  "/api/v1/payments/paystack/webhook",
+  express.raw({ type: "application/json" }),
+);
+
+
 app.use(express.json());
 
-// Routes
-// const user = require("./routes/user");
-// const auth = require("./routes/auth");
-// const passwordReset = require("./routes/password");
 
-// app.use("/user", user);
-// app.use("/auth", auth);
-// app.use("/password", passwordReset);
+
+
+// Routes
+const auth = require("./routes/authRoute");
+const branch = require("./routes/branchRoute");
+const adminBranch = require("./routes/adminBranchRoute");
+const wallet = require("./routes/walletRoute");
+const payment = require("./routes/paymentRoute");
+const workstation = require("./routes/workstationRoute");
+const adminWorkstation = require("./routes/adminWorkstationRoute");
+// const user = require("./routes/userRoute");
+
+//------------------------------------------------------------------------------
+
+app.use("/api/v1/auth", auth);
+app.use("/api/v1/branches", branch);
+app.use("/api/v1/admin/branches", adminBranch);
+app.use("/api/v1/wallet", wallet);
+app.use("/api/v1/payments", payment);
+app.use("/api/v1/workstations", workstation);
+app.use("/api/v1/admin/workstations", adminWorkstation);
+// app.use("/api/v1/auth", user);
 
 // Error handling
 const error = require("./middleware/errorMiddleware");

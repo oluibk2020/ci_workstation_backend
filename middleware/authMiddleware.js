@@ -1,29 +1,34 @@
-const jwt = require("jsonwebtoken");
-// const config = require("config");
-
-
+const { verifyToken } = require("../helper/jwt");
 
 const auth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
 
-    const authHeader = req.headers["authorization"];
-
-    const token = authHeader && authHeader.split(" ")[1];
-
-    if (!token) {
-        return res.status(401).json({ message: "Access token not found" });
-    }
-
-//Veryfying token
-    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-      if (err) {
-        return res.status(401).json({ message: "Invalid access token" });
-      }
-      req.user = user;
-
-      //pass to next middleware
-      next();
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({
+      success: false,
+      message: "Access token not found",
     });
+  }
 
-}
+  const token = authHeader.split(" ")[1];
+
+  try {
+    const decoded = verifyToken(token);
+
+    req.user = {
+      id: decoded.sub,
+      role: decoded.role,
+    };
+
+    next();
+  } catch (error) {
+    console.error("JWT error:", error.message);
+
+    return res.status(401).json({
+      success: false,
+      message: "Invalid or expired access token",
+    });
+  }
+};
 
 module.exports = auth;
