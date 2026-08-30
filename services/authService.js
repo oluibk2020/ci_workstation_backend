@@ -1,6 +1,9 @@
 const bcrypt = require("bcryptjs");
 const { generateToken } = require("../helper/jwt");
 const prisma = require("../helper/prisma");
+const { OAuth2Client } = require("google-auth-library");
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const register = async ({ name, email, password }) => {
   const normalizeEmail = email.toLowerCase().trim();
@@ -30,20 +33,115 @@ const register = async ({ name, email, password }) => {
       },
     });
 
-    return newUser;
+    const qrCode = await qrCodeService.generateQRCode({
+      userId: newUser.id,
+      tx,
+    });
+
+
+     return {
+       user: newUser,
+       qrCode,
+     };
   });
+  const token = generateToken({ sub: user.id, role: user.role });
 
   return {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    status: user.status,
-    verificationStatus: user.verificationStatus,
-    emailVerifiedAt: user.emailVerifiedAt,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+      verificationStatus: user.verificationStatus,
+      emailVerifiedAt: user.emailVerifiedAt,
+    },
+    token,
+    qrCode: user.qrCode,
   };
 };
+
+//------------------------------------------------
+
+const googleLogin = async ({ idToken }) => {
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    throw new Error("GOOGLE_CLIENT_ID is not configured.");
+  }
+
+  const ticket = await client.verifyIdToken({
+    idToken,
+    audience: process.env.GOOGLE_CLIENT_ID,
+  });
+  const googlePayload = ticket.getPayload();
+
+  if (!googlePayload) {
+    throw new Error("Unable to read Google account information.");
+  }
+
+ const email = googlePayload.email.toLowerCase().trim();
+ const name = googlePayload.name;
+ const picture = googlePayload.picture || null
+
+  let user = await prisma.user.findUnique({
+    where: {
+      email,
+    },
+  });
+ if (!user) {
+   
+   user = await prisma.$transaction(async (tx) => {
+     const newUser = await tx.user.create({
+       data: {
+         name,
+         email,
+         passwordHash: null,
+         profileImageUrl: picture,
+         provider: "GOOGLE",
+         role: "USER",
+         status: "ACTIVE",
+         verificationStatus: "UNVERIFIED",
+         emailVerifiedAt: new Date(),
+       },
+     });
+ 
+     await tx.wallet.create({
+       data: {
+         userId: newUser.id,
+       },
+     });
+ 
+     const qrCode = await qrCodeService.generateQRCode({
+       userId: newUser.id,
+       tx,
+     });
+ 
+     return {
+       user: newUser,
+       qrCode,
+     };
+   });
+ }
+
+
+
+  const token = generateToken({ sub: user.id, role: user.role });
+
+  return {
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+      verificationStatus: user.verificationStatus,
+      emailVerifiedAt: user.emailVerifiedAt,
+    },
+    token,
+  };
+};
+
 //--------------------------------------------------
+
 const login = async ({ email, password }) => {
   const normalizeEmail = email.toLowerCase().trim();
 
@@ -107,6 +205,7 @@ const getMe = async (userId) => {
 
 module.exports = {
   register,
+  googleLogin,
   login,
   getMe,
 };

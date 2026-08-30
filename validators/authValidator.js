@@ -52,4 +52,24 @@ const validateLogin = (req, res, next) => {
   next();
 };
 
-module.exports = { validateRegister, validateLogin };
+
+
+//-----------------------------------------------------------
+
+const validateGoogleLogin = (req, res, next) => {
+  const { idToken } = req.body;
+
+  if (!idToken) {
+    return res.status(400).json({
+      success: false,
+      message: "Google token is required.",
+    });
+  }
+
+  next();
+};
+
+
+
+
+module.exports = { validateRegister, validateLogin, validateGoogleLogin };

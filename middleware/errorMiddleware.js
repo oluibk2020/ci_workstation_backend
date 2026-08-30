@@ -1,7 +1,7 @@
-const {
-  PrismaClient,
-  PrismaClientvalidationError,
-} = require("../helper/prisma");
+// const {
+//   PrismaClient,
+//   PrismaClientvalidationError,
+// } = require("../helper/prisma");
 
 const error = (err, req, res, next) => {
   console.log("simple error", err.message);

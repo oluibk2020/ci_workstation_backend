@@ -102,7 +102,9 @@ enum CheckInStatus {
 }
 
 enum CheckInSource {
-  QR
+  USER
+  STAFF
+  SUPER_ADMIN
 }
 
 enum NotificationType {
@@ -135,11 +137,17 @@ enum TwoFactorMethod {
   TOTP
 }
 
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+}
+
 model User {
   id                 String             @id @default(uuid()) @db.Uuid
   name               String
   email              String             @unique
   passwordHash       String?
+  provider           AuthProvider       @default(LOCAL)
   role               Role               @default(USER)
   status             UserStatus         @default(ACTIVE)
   verificationStatus VerificationStatus @default(UNVERIFIED)
@@ -415,7 +423,7 @@ model CheckIn {
   branchId         String        @db.Uuid
   seatId           String        @db.Uuid
   status           CheckInStatus @default(CHECKED_IN)
-  source           CheckInSource @default(QR)
+  source           CheckInSource @default(STAFF)
   checkedInAt      DateTime      @default(now())
   checkedOutAt     DateTime?
   verifiedByUserId String?       @db.Uuid
