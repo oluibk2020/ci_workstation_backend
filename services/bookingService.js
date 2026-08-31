@@ -1,6 +1,9 @@
 const prisma = require("../helper/prisma");
 const { getOperatingDates } = require("../helper/businessDate");
 const walletService = require("./walletService");
+const notificationService = require("./notificationService");
+const qrCodeService = require("./qrCodeService");
+const { sendBookingEmail } = require("../services/mailService");
 const { getIO } = require("../socket");
 
 const MAX_BOOKING_DAYS = 30;
@@ -138,38 +141,43 @@ const resolveBeneficiary = async ({
     throw new Error("Beneficiary name is required for a new beneficiary.");
   }
 
-  const user = await prisma.$transaction(async (tx) => {
-    const newBeneficiary = await tx.user.create({
-      data: {
-        name: beneficiaryName.trim(),
-        email: normalizedEmail,
-        passwordHash: null,
-        provider: "GOOGLE",
-        role: "USER",
-        status: "ACTIVE",
-        verificationStatus: "UNVERIFIED",
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        status: true,
-        verificationStatus: true,
-      },
-    });
-    await tx.wallet.create({
-      data: {
-        userId: newBeneficiary.id,
-      },
-    });
-    return newBeneficiary;
+  const newBeneficiary = await tx.user.create({
+    data: {
+      name: beneficiaryName.trim(),
+      email: normalizedEmail,
+      passwordHash: null,
+      provider: "GOOGLE",
+      role: "USER",
+      status: "ACTIVE",
+      verificationStatus: "UNVERIFIED",
+    },
+
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      status: true,
+      verificationStatus: true,
+    },
+  });
+
+  await tx.wallet.create({
+    data: {
+      userId: newBeneficiary.id,
+    },
+  });
+
+  const qrCode = await qrCodeService.generateQRCode({
+    userId: newBeneficiary.id,
+    tx,
   });
 
   return {
-    beneficiaryUserId: user.id,
+    beneficiaryUserId: newBeneficiary.id,
     isNewBeneficiary: true,
-    beneficiary: user,
+    beneficiary: newBeneficiary,
+    qrCode,
   };
 };
 
@@ -193,7 +201,6 @@ const createBooking = async ({
   endDate,
   dates,
 }) => {
-
   //  Validate the user making the booking
 
   const bookedByUser = await prisma.user.findUnique({
@@ -472,12 +479,99 @@ const createBooking = async ({
       description: "Workstation booking.",
     });
 
+    const bookingNotification = await notificationService.createNotification({
+      tx,
+      userId: bookedByUserId,
+      type: "BOOKING_CONFIRMED",
+      title: "Booking confirmed",
+      message:
+        bookingFor === "OTHER"
+          ? "Your gift workstation booking has been created successfully."
+          : "Your workstation booking has been created successfully.",
+
+      metadata: {
+        // channel: "IN_APP",
+        bookingId: newBooking.id,
+        bookingFor,
+        branchId,
+        workstationId,
+        seatId,
+        dates: bookingDates,
+        totalAmount: totalAmount.toString(),
+      },
+    });
+
+    let beneficiaryNotification = null;
+    if (beneficiary.beneficiaryUserId !== bookedByUserId) {
+      beneficiaryNotification = await notificationService.createNotification({
+        tx,
+        userId: beneficiary.beneficiaryUserId,
+        type: "BOOKING_RECEIVED",
+        title: "You received a workstation booking",
+        message: "A workstation booking has been giftered to you.",
+        metadata: {
+          //  channel: "EMAIL",
+          bookingId: newBooking.id,
+          bookedByUserId,
+          branchId,
+          workstationId,
+          seatId,
+          dates: bookingDates,
+
+          totalAmount: totalAmount.toString(),
+
+          gifted: true,
+
+          newBeneficiary: beneficiary.isNewBeneficiary,
+        },
+      });
+    }
+
     return {
       booking: newBooking,
       wallet: updatedWallet,
       beneficiary,
+      bookingNotification,
+      beneficiaryNotification,
     };
   });
+
+  if (result.beneficiary.beneficiaryUserId !== bookedByUserId) {
+    try {
+      await sendBookingEmail({
+        email: result.beneficiary.beneficiary.email,
+
+        beneficiaryName: result.beneficiary.beneficiary.name,
+
+        branchName: branch.name,
+
+        workstationName: workstation.name,
+
+        seatName: seat.seatId,
+
+        dates: bookingDates,
+
+        // totalAmount: result.booking.totalAmount.toString(),
+        // totalAmount: result.booking.totalAmount.toString(),
+
+        isNewBeneficiary: result.beneficiary.isNewBeneficiary,
+      });
+
+      if (result.beneficiaryNotification) {
+        await prisma.notification.update({
+          where: {
+            id: result.beneficiaryNotification.id,
+          },
+
+          data: {
+            emailSentAt: new Date(),
+          },
+        });
+      }
+    } catch (error) {
+      console.error("Failed to send gift booking email:", error.message);
+    }
+  }
 
   // Realtime availability update
 

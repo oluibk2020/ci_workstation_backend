@@ -2,6 +2,8 @@ const bcrypt = require("bcryptjs");
 const { generateToken } = require("../helper/jwt");
 const prisma = require("../helper/prisma");
 const { OAuth2Client } = require("google-auth-library");
+const { sendWelcomeEmail } = require("../services/mailService");
+const qrCodeService = require("./qrCodeService");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -38,11 +40,16 @@ const register = async ({ name, email, password }) => {
       tx,
     });
 
+    try {
+      await sendWelcomeEmail(newUser.email);
+    } catch (err) {
+      console.error("Welcome email failed:", err.message);
+    }
 
-     return {
-       user: newUser,
-       qrCode,
-     };
+    return {
+      user: newUser,
+      qrCode,
+    };
   });
   const token = generateToken({ sub: user.id, role: user.role });
 
@@ -103,18 +110,24 @@ const googleLogin = async ({ idToken }) => {
          emailVerifiedAt: new Date(),
        },
      });
- 
+
      await tx.wallet.create({
        data: {
          userId: newUser.id,
        },
      });
- 
+
      const qrCode = await qrCodeService.generateQRCode({
        userId: newUser.id,
        tx,
      });
- 
+
+     try {
+       await sendWelcomeEmail(newUser.email);
+     } catch (err) {
+       console.error("Welcome email failed:", err.message);
+     }
+
      return {
        user: newUser,
        qrCode,
