@@ -482,7 +482,7 @@ const createBooking = async ({
     const bookingNotification = await notificationService.createNotification({
       tx,
       userId: bookedByUserId,
-      type: "BOOKING_CONFIRMED",
+      type: "BOOKING_CREATED",
       title: "Booking confirmed",
       message:
         bookingFor === "OTHER"
@@ -506,7 +506,7 @@ const createBooking = async ({
       beneficiaryNotification = await notificationService.createNotification({
         tx,
         userId: beneficiary.beneficiaryUserId,
-        type: "BOOKING_RECEIVED",
+        type: "BOOKING_CREATED",
         title: "You received a workstation booking",
         message: "A workstation booking has been giftered to you.",
         metadata: {

@@ -96,6 +96,40 @@ const checkIn = async ({
   if (bookingDate.beneficiaryUserId !== userId) {
     throw new Error("This booking does not belong to the selected user.");
   }
+
+  // NEW — per the functional spec ("first-time physical access requires
+  // the user's required verification process to be completed" AND
+  // "Banned/suspended users cannot check in or access the workstation"),
+  // BOTH checks were entirely missing from the original code.
+  //
+  // Design decision, please review: enforced on EVERY check-in (permanent),
+  // not just literally-the-first one. A "first-time only" reading was
+  // considered and rejected — it has a real gap: if someone's verification
+  // is later revoked or corrected (e.g. fraudulent documents discovered
+  // after their first visit), a first-time-only check would never catch
+  // that on subsequent visits, since they'd already have a prior CheckIn
+  // record. A permanent check closes that gap and still satisfies the
+  // spec's plain requirement, since nobody can ever complete a first
+  // check-in without already being verified.
+  const beneficiary = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { verificationStatus: true, status: true },
+  });
+
+  if (!beneficiary) {
+    throw new Error("User not found.");
+  }
+
+  if (beneficiary.status !== "ACTIVE") {
+    throw new Error("This account is banned and cannot check in.");
+  }
+
+  if (beneficiary.verificationStatus !== "VERIFIED") {
+    throw new Error(
+      "This account is not verified yet. Identity verification must be completed before check-in.",
+    );
+  }
+
 // Verify that the booking date is TODAY at the branch
   
   const branchToday = getTodayForTimezone(bookingDate.booking.branch.timezone);

@@ -1,6 +1,6 @@
 const express = require("express");
 
-const checkInController = require("../controllers/checkInController");
+const checkInController = require("../controllers/checkinController");
 const { validateCheckIn } = require("../validators/checkInValidator");
 
 const authMiddleware = require("../middleware/authMiddleware");

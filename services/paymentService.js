@@ -1,6 +1,7 @@
 const prisma = require("../helper/prisma");
 
 const { PAYSTACK_BASE_URL, getPaystackHeaders } = require("../config/paystack");
+const walletService = require("./walletService");
 
 const initializePayment = async ({ userId, email, amount }) => {
   // Convert Naira to Kobo

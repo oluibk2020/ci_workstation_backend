@@ -11,6 +11,3 @@ coverage/
 logs/
 dist/
 progress
-publicUserService.js
-publicUserRoute.js
-publicUserController.js

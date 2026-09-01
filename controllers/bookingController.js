@@ -1,4 +1,6 @@
 const bookingService = require("../services/bookingService");
+const cancellationService = require("../services/cancellationService");
+const reassignmentService = require("../services/reassignmentService");
 
 //  Creates a booking using the authenticated user as the booker.
 const createBooking = async (req, res, next) => {
@@ -25,8 +27,11 @@ const createBooking = async (req, res, next) => {
 //  GET MY BOOKINGS
 const getMyBookings = async (req, res, next) => {
   try {
-   
-    const userId = req.user.sub;
+
+    // BUG FIX: was req.user.sub — authMiddleware only ever sets
+    // req.user.id (never .sub), so this was always undefined and this
+    // endpoint could never actually return anyone's bookings.
+    const userId = req.user.id;
 
     const {
       status,
@@ -58,7 +63,8 @@ const getMyBookings = async (req, res, next) => {
 const getBookingById = async (req, res, next) => {
   try {
     
-    const userId = req.user.sub;
+    // BUG FIX: same as above — was req.user.sub.
+    const userId = req.user.id;
 
     
     const { bookingId } = req.params;
@@ -78,10 +84,56 @@ const getBookingById = async (req, res, next) => {
   }
 };
 
+//---------------------------------------------------------------------------
+
+// CANCEL BOOKING DATES — see services/cancellationService.js header for
+// full notes; this was unbuilt (empty file) in the shared repo.
+const cancelBooking = async (req, res, next) => {
+  try {
+    const result = await cancellationService.cancelBookingDates({
+      actorUserId: req.user.id,
+      bookingId: req.params.bookingId,
+      dates: req.body.dates,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Booking date(s) cancelled and wallet credited.",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+//---------------------------------------------------------------------------
+
+// REASSIGN BOOKING DATES — see services/reassignmentService.js header for
+// full notes; this was unbuilt (empty file) in the shared repo.
+const reassignBooking = async (req, res, next) => {
+  try {
+    const result = await reassignmentService.reassignBookingDates({
+      actorUserId: req.user.id,
+      bookingId: req.params.bookingId,
+      changes: req.body.changes,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Booking date(s) reassigned successfully.",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 //-------------------------------------------------------------------------
 
 module.exports = {
   createBooking,
   getMyBookings,
   getBookingById,
+  cancelBooking,
+  reassignBooking,
 };
