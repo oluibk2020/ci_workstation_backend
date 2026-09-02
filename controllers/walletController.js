@@ -35,7 +35,25 @@ const getTransactions = async (req, res, next) => {
 };
 
 
+// NEW — Admin-facing log of every cash-funding credit issued. See
+// services/walletService.js's getCashFundingHistory header.
+const getCashFundingHistory = async (req, res, next) => {
+  try {
+    const { page, limit } = req.query;
+    const result = await walletService.getCashFundingHistory({ page, limit });
+
+    return res.status(200).json({
+      success: true,
+      message: "Cash-funding history retrieved successfully.",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
     getWallet,
     getTransactions,
+    getCashFundingHistory,
 };

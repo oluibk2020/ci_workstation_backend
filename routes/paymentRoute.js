@@ -6,6 +6,13 @@ const router = express.Router();
 
 router.post("/initialize", auth, paymentController.initializePayment);
 
+// NEW — see services/paymentService.js's getMyPayments header for context.
+router.get("/", auth, paymentController.getMyPayments);
+
+// NEW — Super Admin only, cross-user view. Must come before "/verify/:reference"
+// is irrelevant here since the paths don't overlap, but kept together for clarity.
+const requireRole = require("../middleware/roleMiddleware");
+router.get("/admin/all", auth, requireRole("SUPER_ADMIN"), paymentController.getAllPayments);
 
 router.get("/verify/:reference", auth, paymentController.verifyPayment);
 

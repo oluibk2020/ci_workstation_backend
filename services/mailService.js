@@ -1,7 +1,13 @@
 const nodemailer = require("nodemailer");
 
+// BUG FIX: `service: "gmail"` defaults to port 465 (implicit TLS), which
+// this network blocks outbound (confirmed via raw TCP test — 465 times
+// out, 587 connects immediately). Using Gmail's STARTTLS port instead.
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false,
+  requireTLS: true,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,

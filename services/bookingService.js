@@ -1,13 +1,20 @@
 const prisma = require("../helper/prisma");
-const { getOperatingDates } = require("../helper/businessDate");
+const {
+  getOperatingDates,
+  getTodayForTimezone,
+} = require("../helper/businessDate");
 const walletService = require("./walletService");
 const notificationService = require("./notificationService");
 const qrCodeService = require("./qrCodeService");
 const { sendBookingEmail } = require("../services/mailService");
 const { getIO } = require("../socket");
+const { getConfigValue } = require("./systemConfigService");
 
-const MAX_BOOKING_DAYS = 30;
-const MAX_ADVANCE_BOOKING_DAYS = 30;
+// Previously hardcoded JS constants (both 30) — now read live from
+// SystemConfig via getConfigValue() inside createBooking, so a change on
+// the Settings page actually takes effect. Kept here as documented
+// fallback defaults only (systemConfigService.js has its own defaults
+// too, used if a row is ever missing).
 
 const BOOKING_TRANSACTION_MAX_RETRIES = 3;
 
@@ -61,11 +68,15 @@ const normalizeFlexibleDates = (dates) => {
 };
 
 // BOOKING WINDOW VALIDATION
-//  A booking may contain at most 30 operating days.
-// A booking cannot extend beyond 30 calendar days from today.
+//  A booking may contain at most `max_booking_days` operating days
+//  (SystemConfig — see services/systemConfigService.js).
+// A booking cannot extend beyond `max_monthly_reassignments`... no wait,
+// beyond `max_booking_days` calendar days from today, read from the same
+// config source. Both were previously hardcoded JS constants that a
+// Settings page could never actually affect — now read live from the DB.
 
-// Ensures every requested booking date is not in the past and not more than 30 calendar days from today
-const validateBookingWindow = (dates) => {
+// Ensures every requested booking date is not in the past and not more than maxAdvanceDays calendar days from today
+const validateBookingWindow = (dates, maxAdvanceDays) => {
   const today = new Date();
 
   // Strip the time portion so only the business date is compared.
@@ -73,7 +84,7 @@ const validateBookingWindow = (dates) => {
 
   const maximumDate = new Date(today);
 
-  maximumDate.setUTCDate(maximumDate.getUTCDate() + MAX_ADVANCE_BOOKING_DAYS);
+  maximumDate.setUTCDate(maximumDate.getUTCDate() + maxAdvanceDays);
 
   for (const dateString of dates) {
     const date = parseDate(dateString);
@@ -83,7 +94,9 @@ const validateBookingWindow = (dates) => {
     }
 
     if (date > maximumDate) {
-      throw new Error("Booking cannot be made more than 30 days in advance.");
+      throw new Error(
+        `Booking cannot be made more than ${maxAdvanceDays} days in advance.`,
+      );
     }
   }
 };
@@ -278,11 +291,16 @@ const createBooking = async ({
     throw new Error("No valid operating days were supplied.");
   }
 
-  if (bookingDates.length > MAX_BOOKING_DAYS) {
-    throw new Error("A booking cannot contain more than 30 operating days.");
+  const maxBookingDays = await getConfigValue("max_booking_days");
+
+  if (bookingDates.length > maxBookingDays) {
+    throw new Error(
+      `A booking cannot contain more than ${maxBookingDays} operating days.`,
+    );
   }
 
-  validateBookingWindow(bookingDates);
+  const maxAdvanceDays = await getConfigValue("max_advance_booking_days");
+  validateBookingWindow(bookingDates, maxAdvanceDays);
 
   //    Convert the final YYYY-MM-DD values into Date objects for Prisma.
   const requestedDateObjects = bookingDates.map(parseDate);
@@ -873,8 +891,86 @@ const getBookingById = async ({ userId, bookingId }) => {
 
 //--------------------------------------
 
+/**
+ * NEW — no way for Staff/Super Admin to see "everyone expected at a
+ * branch today" existed; the only way to check someone's booking was to
+ * resolve their QR one at a time. This is the operational view that was
+ * missing. Staff/Admin only (enforced at the route layer via
+ * requireRole) — deliberately not exposed to regular USERs, since it
+ * shows other people's bookings.
+ */
+const getTodaysBookings = async ({ branchId }) => {
+  const branch = await prisma.branch.findUnique({
+    where: { id: branchId },
+    select: { id: true, name: true, timezone: true },
+  });
+
+  if (!branch) {
+    throw new Error("Branch not found.");
+  }
+
+  const today = getTodayForTimezone(branch.timezone);
+  const todayDate = new Date(`${today}T00:00:00.000Z`);
+
+  const dates = await prisma.bookingDate.findMany({
+    where: {
+      bookingDate: todayDate,
+      status: { in: ["ACTIVE", "COMPLETED"] },
+      booking: {
+        branchId,
+        status: "ACTIVE",
+      },
+    },
+    orderBy: {
+      seat: { seatId: "asc" },
+    },
+    select: {
+      id: true,
+      bookingDate: true,
+      status: true,
+      beneficiaryUserId: true,
+
+      beneficiary: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          profileImageUrl: true,
+          verificationStatus: true,
+        },
+      },
+
+      booking: {
+        select: {
+          id: true,
+          bookedBy: { select: { id: true, name: true } },
+          workstation: { select: { id: true, name: true } },
+        },
+      },
+
+      seat: { select: { id: true, seatId: true } },
+
+      checkIn: {
+        select: {
+          id: true,
+          status: true,
+          checkedInAt: true,
+          checkedOutAt: true,
+        },
+      },
+    },
+  });
+
+  return {
+    branch: { id: branch.id, name: branch.name },
+    date: today,
+    bookings: dates,
+  };
+};
+
 module.exports = {
   createBooking,
   getMyBookings,
   getBookingById,
+  getTodaysBookings,
 };

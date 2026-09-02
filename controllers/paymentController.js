@@ -55,8 +55,46 @@ const handlePaystackWebhook = async (req, res) => {
   }
 };
 
+const getMyPayments = async (req, res, next) => {
+  try {
+    const { page, limit } = req.query;
+    const result = await paymentService.getMyPayments({
+      userId: req.user.id,
+      page,
+      limit,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Payment history retrieved successfully.",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// NEW — Admin-facing view across ALL users' payments. See
+// services/paymentService.js's getAllPayments header.
+const getAllPayments = async (req, res, next) => {
+  try {
+    const { page, limit } = req.query;
+    const result = await paymentService.getAllPayments({ page, limit });
+
+    return res.status(200).json({
+      success: true,
+      message: "All payments retrieved successfully.",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
     initializePayment,
     verifyPayment,
-    handlePaystackWebhook
+    handlePaystackWebhook,
+    getMyPayments,
+    getAllPayments
 };

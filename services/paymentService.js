@@ -104,7 +104,20 @@ const handlePaystackWebhook = async ({ signature, rawBody }) => {
     .update(rawBody)
     .digest("hex");
 
-  if (signature !== expectedSignature) {
+  // SECURITY FIX: was a plain `!==` comparison, which is vulnerable to a
+  // timing attack — an attacker measuring response-time differences could
+  // theoretically recover the correct signature byte-by-byte. HMAC/
+  // signature comparisons must use a constant-time comparison instead.
+  // Guard the length check first since timingSafeEqual throws (rather
+  // than returning false) on mismatched buffer lengths.
+  const signatureBuffer = Buffer.from(signature || "", "hex");
+  const expectedBuffer = Buffer.from(expectedSignature, "hex");
+
+  const signatureIsValid =
+    signatureBuffer.length === expectedBuffer.length &&
+    crypto.timingSafeEqual(signatureBuffer, expectedBuffer);
+
+  if (!signatureIsValid) {
     throw new Error("Invalid Paystack webhook signature.");
   }
 
@@ -159,8 +172,93 @@ const handlePaystackWebhook = async ({ signature, rawBody }) => {
   });
 };
 
+/**
+ * NEW — no "list my payments" endpoint existed. Distinct from
+ * GET /wallet/transactions: this is Paystack payment *attempts*
+ * (INITIATED/PENDING/SUCCESS/FAILED/CANCELLED), including ones that never
+ * successfully credited the wallet. Wallet transactions are the ledger of
+ * money that actually moved; this is closer to a receipt/attempt history.
+ */
+const getMyPayments = async ({ userId, page = 1, limit = 20 }) => {
+  const currentPage = Math.max(Number(page) || 1, 1);
+  const pageSize = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  const skip = (currentPage - 1) * pageSize;
+
+  const [total, payments] = await prisma.$transaction([
+    prisma.payment.count({ where: { userId } }),
+    prisma.payment.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: pageSize,
+      select: {
+        id: true,
+        amount: true,
+        status: true,
+        provider: true,
+        providerReference: true,
+        channel: true,
+        paidAt: true,
+        createdAt: true,
+      },
+    }),
+  ]);
+
+  return {
+    payments,
+    pagination: {
+      page: currentPage,
+      limit: pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+    },
+  };
+};
+
+/**
+ * NEW — Admin-facing view across ALL users' payments, not just "my own"
+ * (getMyPayments is scoped to req.user.id). Needed for the "Payments &
+ * Wallet Credits" admin page.
+ */
+const getAllPayments = async ({ page = 1, limit = 20 }) => {
+  const currentPage = Math.max(Number(page) || 1, 1);
+  const pageSize = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  const skip = (currentPage - 1) * pageSize;
+
+  const [total, payments] = await prisma.$transaction([
+    prisma.payment.count(),
+    prisma.payment.findMany({
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: pageSize,
+      select: {
+        id: true,
+        amount: true,
+        status: true,
+        provider: true,
+        providerReference: true,
+        channel: true,
+        createdAt: true,
+        user: { select: { id: true, name: true, email: true } },
+      },
+    }),
+  ]);
+
+  return {
+    payments,
+    pagination: {
+      page: currentPage,
+      limit: pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+    },
+  };
+};
+
 module.exports = {
-    initializePayment,
-    verifyPayment,
-    handlePaystackWebhook
+  initializePayment,
+  verifyPayment,
+  handlePaystackWebhook,
+  getMyPayments,
+  getAllPayments,
 };

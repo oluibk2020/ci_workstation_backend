@@ -14,6 +14,8 @@ router.post("/login", validateLogin, authController.login);
 
 router.get("/me", authMiddleware, authController.getMe); 
 
+router.patch("/me", authMiddleware, authController.updateProfile);
+
 
 
 

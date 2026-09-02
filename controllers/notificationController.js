@@ -4,7 +4,7 @@ const notificationService = require("../services/notificationService");
 
 const getMyNotifications = async (req, res, next) => {
   try {
-    const userId = req.user.sub;
+    const userId = req.user.id; // BUG FIX: was req.user.sub, always undefined
 
     const { unreadOnly, page = 1, limit = 20 } = req.query;
 
@@ -30,7 +30,7 @@ const getMyNotifications = async (req, res, next) => {
 
 const getNotificationById = async (req, res, next) => {
   try {
-    const userId = req.user.sub;
+    const userId = req.user.id; // BUG FIX: was req.user.sub, always undefined
 
     const notification = await notificationService.getNotificationById({
       userId,
@@ -54,7 +54,7 @@ const getNotificationById = async (req, res, next) => {
 
 const markNotificationAsRead = async (req, res, next) => {
   try {
-    const userId = req.user.sub;
+    const userId = req.user.id; // BUG FIX: was req.user.sub, always undefined
 
     const result = await notificationService.markNotificationAsRead({
       userId,
@@ -76,7 +76,7 @@ const markNotificationAsRead = async (req, res, next) => {
 
 const markAllNotificationsAsRead = async (req, res, next) => {
   try {
-    const userId = req.user.sub;
+    const userId = req.user.id; // BUG FIX: was req.user.sub, always undefined
 
     const result = await notificationService.markAllNotificationsAsRead(userId);
 

@@ -4,6 +4,7 @@ const prisma = require("../helper/prisma");
 const { OAuth2Client } = require("google-auth-library");
 const { sendWelcomeEmail } = require("../services/mailService");
 const qrCodeService = require("./qrCodeService");
+const { isValidImageDataUri } = require("../helper/imageValidation");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -85,57 +86,54 @@ const googleLogin = async ({ idToken }) => {
     throw new Error("Unable to read Google account information.");
   }
 
- const email = googlePayload.email.toLowerCase().trim();
- const name = googlePayload.name;
- const picture = googlePayload.picture || null
+  const email = googlePayload.email.toLowerCase().trim();
+  const name = googlePayload.name;
+  const picture = googlePayload.picture || null;
 
   let user = await prisma.user.findUnique({
     where: {
       email,
     },
   });
- if (!user) {
-   
-   user = await prisma.$transaction(async (tx) => {
-     const newUser = await tx.user.create({
-       data: {
-         name,
-         email,
-         passwordHash: null,
-         profileImageUrl: picture,
-         provider: "GOOGLE",
-         role: "USER",
-         status: "ACTIVE",
-         verificationStatus: "UNVERIFIED",
-         emailVerifiedAt: new Date(),
-       },
-     });
+  if (!user) {
+    user = await prisma.$transaction(async (tx) => {
+      const newUser = await tx.user.create({
+        data: {
+          name,
+          email,
+          passwordHash: null,
+          profileImageUrl: picture,
+          provider: "GOOGLE",
+          role: "USER",
+          status: "ACTIVE",
+          verificationStatus: "UNVERIFIED",
+          emailVerifiedAt: new Date(),
+        },
+      });
 
-     await tx.wallet.create({
-       data: {
-         userId: newUser.id,
-       },
-     });
+      await tx.wallet.create({
+        data: {
+          userId: newUser.id,
+        },
+      });
 
-     const qrCode = await qrCodeService.generateQRCode({
-       userId: newUser.id,
-       tx,
-     });
+      const qrCode = await qrCodeService.generateQRCode({
+        userId: newUser.id,
+        tx,
+      });
 
-     try {
-       await sendWelcomeEmail(newUser.email);
-     } catch (err) {
-       console.error("Welcome email failed:", err.message);
-     }
+      try {
+        await sendWelcomeEmail(newUser.email);
+      } catch (err) {
+        console.error("Welcome email failed:", err.message);
+      }
 
-     return {
-       user: newUser,
-       qrCode,
-     };
-   });
- }
-
-
+      return {
+        user: newUser,
+        qrCode,
+      };
+    });
+  }
 
   const token = generateToken({ sub: user.id, role: user.role });
 
@@ -216,9 +214,62 @@ const getMe = async (userId) => {
   return user;
 };
 
+/**
+ * NEW — no profile update capability existed anywhere (only GET /auth/me
+ * was implemented). Deliberately scoped to name and profileImageUrl only:
+ * email changes should go through a separate verify-new-email flow (not
+ * built), and role/status are Super Admin-only concerns already covered
+ * by adminService.
+ *
+ * FILE STORAGE: same pragmatic decision as verificationService.js —
+ * profileImageUrl accepts a base64 data URI directly, since no
+ * file-upload library or cloud storage credentials exist in this
+ * project. Swap for real object storage before launch.
+ */
+const updateProfile = async ({ userId, name, profileImageUrl }) => {
+  const data = {};
+  if (typeof name === "string" && name.trim()) data.name = name.trim();
+
+  if (typeof profileImageUrl === "string" && profileImageUrl) {
+    // SECURITY FIX — same reasoning as verificationService.js's
+    // submitVerification: never store an unvalidated URL that will later
+    // be rendered back as an image source.
+    if (!isValidImageDataUri(profileImageUrl)) {
+      throw new Error(
+        "profileImageUrl must be a valid base64 image data URI (png, jpg, gif, or webp).",
+      );
+    }
+    data.profileImageUrl = profileImageUrl;
+  }
+
+  if (Object.keys(data).length === 0) {
+    throw new Error("Nothing to update.");
+  }
+
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data,
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      status: true,
+      verificationStatus: true,
+      profileImageUrl: true,
+      emailVerifiedAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  return user;
+};
+
 module.exports = {
   register,
   googleLogin,
   login,
   getMe,
+  updateProfile,
 };

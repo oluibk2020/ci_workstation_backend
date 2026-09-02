@@ -31,8 +31,12 @@
 const crypto = require("crypto");
 const prisma = require("../helper/prisma");
 const { getTodayForTimezone } = require("../helper/businessDate");
+const { getConfigValue } = require("./systemConfigService");
 
-const MAX_MONTHLY_REASSIGNMENTS = 3;
+// Previously a hardcoded JS constant — now read live from SystemConfig
+// (key: max_monthly_reassignments, seeded value 3) via getConfigValue()
+// inside reassignBookingDates, so a change on the Settings page actually
+// takes effect.
 
 const formatDate = (date) => date.toISOString().slice(0, 10);
 const parseDate = (dateString) => new Date(`${dateString}T00:00:00.000Z`);
@@ -40,7 +44,9 @@ const parseDate = (dateString) => new Date(`${dateString}T00:00:00.000Z`);
 const getCurrentMonthRange = () => {
   const now = new Date();
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const end = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
+  );
   return { start, end };
 };
 
@@ -83,9 +89,13 @@ const reassignBookingDates = async ({ actorUserId, bookingId, changes }) => {
     distinct: ["operationReference"],
   });
 
-  if (existingOperations.length >= MAX_MONTHLY_REASSIGNMENTS) {
+  const maxMonthlyReassignments = await getConfigValue(
+    "max_monthly_reassignments",
+  );
+
+  if (existingOperations.length >= maxMonthlyReassignments) {
     throw new Error(
-      `You have reached the maximum of ${MAX_MONTHLY_REASSIGNMENTS} reassignment operations this month.`,
+      `You have reached the maximum of ${maxMonthlyReassignments} reassignment operations this month.`,
     );
   }
 
@@ -105,7 +115,9 @@ const reassignBookingDates = async ({ actorUserId, bookingId, changes }) => {
       }
 
       if (fromDate <= branchToday) {
-        throw new Error(`Date ${fromDate} cannot be reassigned because it is today or in the past.`);
+        throw new Error(
+          `Date ${fromDate} cannot be reassigned because it is today or in the past.`,
+        );
       }
 
       if (toDate <= branchToday) {
@@ -137,7 +149,9 @@ const reassignBookingDates = async ({ actorUserId, bookingId, changes }) => {
         }
 
         if (seat.workstationId !== booking.workstationId) {
-          throw new Error("The destination seat must belong to the same workstation type as the original booking.");
+          throw new Error(
+            "The destination seat must belong to the same workstation type as the original booking.",
+          );
         }
       }
 
@@ -167,7 +181,13 @@ const reassignBookingDates = async ({ actorUserId, bookingId, changes }) => {
         throw new Error(`Beneficiary already has a booking on ${toDate}.`);
       }
 
-      prepared.push({ bookingDate, toDateObj, destinationSeatId, fromDate, toDate });
+      prepared.push({
+        bookingDate,
+        toDateObj,
+        destinationSeatId,
+        fromDate,
+        toDate,
+      });
     }
 
     // Second pass: every change validated — now apply them all.
@@ -212,6 +232,56 @@ const reassignBookingDates = async ({ actorUserId, bookingId, changes }) => {
   return result;
 };
 
+/**
+ * NEW — "Reassignment Requests" was requested, but reassignment in this
+ * system is self-service (the booker calls this directly — there's no
+ * approval step anywhere in the schema or the service above). Building a
+ * fake "pending requests" queue would misrepresent how the feature
+ * actually works. This is a history/audit log instead — every
+ * reassignment that's already happened, for Staff/Admin visibility —
+ * which is the real, honest equivalent of what was asked for.
+ */
+const getReassignmentHistory = async ({ page = 1, limit = 20 }) => {
+  const currentPage = Math.max(Number(page) || 1, 1);
+  const pageSize = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  const skip = (currentPage - 1) * pageSize;
+
+  const [total, reassignments] = await prisma.$transaction([
+    prisma.bookingReassignment.count(),
+    prisma.bookingReassignment.findMany({
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: pageSize,
+      select: {
+        id: true,
+        bookingId: true,
+        operationReference: true,
+        fromDate: true,
+        toDate: true,
+        createdAt: true,
+        requestedBy: { select: { id: true, name: true, email: true } },
+        booking: {
+          select: {
+            branch: { select: { name: true } },
+            workstation: { select: { name: true } },
+          },
+        },
+      },
+    }),
+  ]);
+
+  return {
+    reassignments,
+    pagination: {
+      page: currentPage,
+      limit: pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+    },
+  };
+};
+
 module.exports = {
   reassignBookingDates,
+  getReassignmentHistory,
 };

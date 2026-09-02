@@ -179,6 +179,7 @@ const resolveQRCode = async (token) => {
     },
 
     select: {
+      id: true,
       bookingDate: true,
 
       booking: {
@@ -242,6 +243,11 @@ const resolveQRCode = async (token) => {
 
     currentBooking: currentBooking
       ? {
+          // NEW — was missing entirely. checkinService.checkIn requires
+          // a bookingDateId, but this endpoint gave the frontend nothing
+          // to check someone in with. Added so a scan result can lead
+          // directly to a check-in action.
+          bookingDateId: currentBooking.id,
           date: currentBooking.bookingDate,
 
           branch: {

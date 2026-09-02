@@ -4,7 +4,12 @@ const { getIO } = require("../socket");
 const checkIn = async (req, res, next) => {
   try {
     const result = await checkInService.checkIn({
-      actorUserId: req.user.sub,
+      // BUG FIX: was req.user.sub — authMiddleware.js only ever sets
+      // req.user.id (never .sub), so this was always undefined. Every
+      // check-in attempt was silently broken. Same bug class already
+      // found and fixed in bookingController.js — see
+      // docs/BACKEND_CODE_REVIEW.md.
+      actorUserId: req.user.id,
       actorRole: req.user.role,
 
       bookingDateId: req.body.bookingDateId,
@@ -42,7 +47,8 @@ const checkIn = async (req, res, next) => {
 const checkOut = async (req, res, next) => {
   try {
     const result = await checkInService.checkOut({
-      actorUserId: req.user.sub,
+      // BUG FIX: same as checkIn above — was req.user.sub.
+      actorUserId: req.user.id,
       actorRole: req.user.role,
       checkInId: req.params.checkInId,
     });

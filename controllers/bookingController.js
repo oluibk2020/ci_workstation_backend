@@ -130,10 +130,56 @@ const reassignBooking = async (req, res, next) => {
 
 //-------------------------------------------------------------------------
 
+// TODAY'S BOOKINGS — Staff/Super Admin only (enforced at the route
+// layer). New: no operational "who's expected today" view existed.
+const getTodaysBookings = async (req, res, next) => {
+  try {
+    const result = await bookingService.getTodaysBookings({
+      branchId: req.query.branchId,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Today's bookings retrieved successfully.",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+//-------------------------------------------------------------------------
+
+// REASSIGNMENT HISTORY — Staff/Super Admin only (enforced at the route
+// layer). See services/reassignmentService.js header for why this is a
+// history/audit log rather than a pending-requests queue.
+const getReassignmentHistory = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+
+    const result = await reassignmentService.getReassignmentHistory({
+      page,
+      limit,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Reassignment history retrieved successfully.",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+//-------------------------------------------------------------------------
+
 module.exports = {
   createBooking,
   getMyBookings,
   getBookingById,
   cancelBooking,
   reassignBooking,
+  getTodaysBookings,
+  getReassignmentHistory,
 };

@@ -252,3 +252,167 @@ node scripts/creditTestWallet.js someone@example.com 50000
 This bypasses all payment verification on purpose — it's for local
 testing only. Delete it (or just don't ship it) once real Paystack
 funding or a proper cash-funding endpoint exists.
+
+## Fourth pass — 2026-08-31 (Phase 5 groundwork): QR resolution missing bookingDateId
+
+Found while wiring the Staff QR/check-in UI on the frontend.
+`services/qrCodeService.js`'s `resolveQRCode` — the function behind the
+public `GET /qr/public/:token` endpoint — never included the
+`BookingDate.id` in its `currentBooking` response, but
+`checkinService.checkIn` requires exactly that id to actually check
+someone in. The endpoint could tell you *that* someone had a booking
+today, but gave the frontend nothing to act on it with.
+
+**Fixed:** added `id: true` to the `bookingDate` select, and included it
+as `currentBooking.bookingDateId` in the response. Purely additive — no
+existing field removed or renamed, so this can't break anything already
+depending on the old shape.
+
+## Fifth addition — 2026-08-31: dev-only test verification script
+
+Companion to `creditTestWallet.js`. There is no identity-verification
+feature anywhere in this codebase (checked directly — no route,
+controller, or service touches `verificationStatus` except reading it).
+Since check-in now correctly requires `VERIFIED` (this session's patch),
+no account can pass check-in through any real flow yet. Added
+`scripts/verifyTestUser.js` so this can still be tested:
+
+```
+node scripts/verifyTestUser.js someone@example.com
+```
+
+This is not a substitute for building the real feature (photo/ID
+document submission + admin review) — just an unblocker until that
+exists.
+
+## Fourth pass — 2026-09-01: a systemic bug across five controllers, plus a missing feature that would have blocked everyone
+
+### `req.user.sub` — not an isolated bug, a pattern
+
+The `req.user.sub` bug first caught in `bookingController.js` turned out to
+be far more widespread. `authMiddleware.js` sets `req.user = { id, role }`
+— there is no `.sub` anywhere on that object — but five separate
+controllers read `.sub` instead of `.id`:
+
+- `controllers/checkinController.js` — **check-in and check-out were
+  completely non-functional.** `actorUserId` was always `undefined`.
+- `controllers/qrCodeController.js` — generate/get-current/revoke QR were
+  all broken (only the registration-time QR generation worked, since that
+  path calls the service directly, not through this controller).
+- `controllers/adminController.js` — **worse than "broken."** With
+  `actorUserId` always `undefined`, the "you cannot change your own
+  status/role" self-guard inside `adminService` could never actually
+  trigger (`undefined === targetUserId` is always false), meaning that
+  protection was silently unenforced, not just inconvenient.
+- `controllers/notificationController.js` — same bug, four places. Lower
+  stakes since nothing calls this feature yet.
+
+All five now read `req.user.id`. Verified by booting the server and
+confirming the check-in and verification routes return proper `401`s
+(auth correctly required) rather than crashing or 404ing.
+
+**Worth investigating on your end:** given how many places this same typo
+appeared, it's worth checking whether `.sub` is a leftover from an earlier
+JWT payload shape (i.e. `generateToken` used to put the user id under a
+`sub` claim, and `authMiddleware` was later changed to read it into
+`.id` without updating every consumer). If so, a project-wide search for
+`req.user.sub` before your next release would be worthwhile — this patch
+covers what exists in the repo shared with us, but I can't rule out this
+exact pattern reappearing in code written after this snapshot.
+
+### New: identity verification (submit → review → approve/reject)
+
+No identity verification feature existed anywhere — no route, controller,
+or service ever set `verificationStatus` away from its default. Since
+check-in now correctly requires `VERIFIED` (patched in the second pass),
+this meant **no real account, including newly registered ones, could ever
+legitimately pass check-in.** `scripts/verifyTestUser.js` (added in the
+second pass) was always meant to be a temporary stand-in for this, not a
+permanent solution.
+
+Built directly against your existing schema (`IdentityVerification`,
+`IDDocument`, `VerificationStatus`, `IDDocumentType`, `DocumentStatus`) —
+no schema changes:
+
+- `services/verificationService.js` — `submitVerification`,
+  `listPendingVerifications`, `reviewVerification`.
+- `controllers/verificationController.js`, `routes/verificationRoute.js`
+  — mounted at `/api/v1/verification`:
+  - `POST /verification` — any authenticated user submits documents.
+  - `GET /verification/pending` — Staff/Super Admin only.
+  - `PATCH /verification/:verificationId/review` — Staff/Super Admin only,
+    `{ approve: true|false, rejectionReason? }`.
+
+**File storage decision, please review:** no file-upload library (multer,
+etc.) or cloud storage credentials (S3/Cloudinary) exist in this project.
+`documentUrl` is a plain `String` column on your schema, so rather than
+add a new dependency and a credential this team doesn't have configured
+yet, the frontend sends a base64 data URI directly as `documentUrl`. This
+is a pragmatic stand-in, not a production design — data URIs bloat table
+rows and weren't meant to hold real files at scale. Swap for a real
+upload-then-URL flow before launch; nothing else about the
+request/response shape needs to change when you do.
+
+## Fifth pass — 2026-09-01: two new endpoints (profile updates, today's bookings)
+
+Both requested directly, both genuinely missing.
+
+### `PATCH /auth/me` — profile updates
+
+No way to update a name or profile photo existed anywhere — only
+`GET /auth/me` was implemented. Added `authService.updateProfile`,
+wired through `authController.updateProfile` and a new route.
+Deliberately scoped to `name` and `profileImageUrl` only — email changes
+should go through a separate verify-new-email flow (not built), and
+role/status are Super Admin-only concerns already covered by
+`adminService`. Same file-storage decision as `verificationService.js`:
+`profileImageUrl` accepts a base64 data URI, since no upload library or
+cloud storage credentials exist yet.
+
+### `GET /bookings/today?branchId=` — Staff/Super Admin only
+
+No operational "who's expected at this branch today" view existed — the
+only way to check anyone's booking was resolving their QR one at a time.
+Added `bookingService.getTodaysBookings`, wired through
+`bookingController.getTodaysBookings` and a new route, registered
+**before** `GET /bookings/:bookingId` in `routes/bookingRoute.js` (route
+order matters here — `/today` would otherwise be captured by the
+`:bookingId` param pattern).
+
+Returns each `BookingDate` for the branch's current business day (per
+branch timezone, `ACTIVE` or `COMPLETED` bookings only), with beneficiary
+identity, verification status, the booking's workstation, seat, and
+whatever `CheckIn` record exists so far.
+
+Both endpoints verified via the same method as every prior patch:
+syntax-checked, booted against a stub Prisma client, confirmed correct
+`401` responses (auth required, not a crash or 404) with no new
+`require()` errors.
+
+## Sixth pass — 2026-09-01: cash-funding endpoint
+
+Their schema has supported this since the first spec (`CASH_FUNDING` in
+`WalletTransactionType`), and their own frozen deployment doc lists
+*"Cash funding works"* as a launch requirement — but no controller or
+route anywhere ever implemented it. This was flagged repeatedly across
+earlier passes without being built, since it felt like exactly the kind
+of decision (route shape, who can do it, what gets recorded) that
+shouldn't be guessed at alongside bug fixes.
+
+Building it now that it's specifically requested:
+
+- `adminService.creditUserWallet` — reuses `walletService.creditWallet`
+  directly (same code path Paystack funding uses), so the resulting
+  ledger entry is properly formed, not a shortcut. Refuses to credit a
+  banned account.
+- `POST /admin/users/:userId/wallet-credit` — Super Admin only,
+  `{ amount, reason? }`. Follows the same URL shape as the existing
+  `/admin/users/:userId/status` and `/role` endpoints.
+
+Verified the same way as every other endpoint this session: syntax-checked,
+booted against a stub Prisma client, confirmed a correct `401` (auth
+required, not a crash) with zero new `require()` errors.
+
+The frontend's "Credit Wallet" button — removed from `AdminClientsPage` in
+an earlier pass specifically because nothing real existed to wire it to —
+is now restored and pointed at this endpoint.

@@ -65,6 +65,24 @@ const getMe = async (req, res, next) => {
 
 //-------------------------------------------------------------------------------------------
 
+const updateProfile = async (req, res, next) => {
+  try {
+    const user = await authService.updateProfile({
+      userId: req.user.id,
+      name: req.body.name,
+      profileImageUrl: req.body.profileImageUrl,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully.",
+      data: { user },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 
 
@@ -72,7 +90,8 @@ module.exports = {
   register,
     googleLogin,
     login,
-    getMe
+    getMe,
+    updateProfile
 };
 
 

@@ -37,4 +37,13 @@ router.patch(
   adminController.updateUserRole,
 );
 
+// NEW — see services/adminService.js's creditUserWallet header for full
+// context (no cash-funding endpoint existed anywhere before this).
+router.post(
+  "/users/:userId/wallet-credit",
+  auth,
+  requireRole("SUPER_ADMIN"),
+  adminController.creditUserWallet,
+);
+
 module.exports = router;

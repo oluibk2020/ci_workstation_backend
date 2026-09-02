@@ -6,7 +6,9 @@ const generateQRCode = async (req, res, next) => {
     
      // The user ID comes from the authenticated JWT. Prevents anyone from choosing which user's QR to generate.
      
-    const result = await qrCodeService.generateQRCode({userId:req.user.sub});
+    // BUG FIX: was req.user.sub — authMiddleware.js only ever sets
+     // req.user.id (never .sub), so QR generation was always broken.
+    const result = await qrCodeService.generateQRCode({userId:req.user.id});
 
     return res.status(201).json({
       success: true,
@@ -23,7 +25,8 @@ const generateQRCode = async (req, res, next) => {
 //-----------------------------------------------------------------
 const getCurrentQRCode = async (req, res, next) => {
   try {
-    const qrCode = await qrCodeService.getCurrentQRCode(req.user.sub);
+    // BUG FIX: same as generateQRCode above — was req.user.sub.
+    const qrCode = await qrCodeService.getCurrentQRCode(req.user.id);
 
     return res.status(200).json({
       success: true,
@@ -41,7 +44,8 @@ const getCurrentQRCode = async (req, res, next) => {
 
 const revokeQRCode = async (req, res, next) => {
   try {
-    const result = await qrCodeService.revokeQRCode(req.user.sub);
+    // BUG FIX: same as generateQRCode above — was req.user.sub.
+    const result = await qrCodeService.revokeQRCode(req.user.id);
 
     return res.status(200).json({
       success: true,

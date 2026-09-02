@@ -30,7 +30,13 @@ const getUsers = async (req, res, next) => {
 const updateUserStatus = async (req, res, next) => {
   try {
     const result = await adminService.updateUserStatus({
-      actorUserId: req.user.sub,
+      // BUG FIX: was req.user.sub — authMiddleware.js only ever sets
+      // req.user.id (never .sub). This wasn't just broken functionality:
+      // with actorUserId always undefined, adminService's "you cannot
+      // change your own status" self-guard could never actually trigger
+      // (undefined never equals a real user id), so that protection was
+      // silently not enforced. See docs/BACKEND_CODE_REVIEW.md.
+      actorUserId: req.user.id,
 
       targetUserId: req.params.userId,
 
@@ -53,7 +59,9 @@ const updateUserStatus = async (req, res, next) => {
 const updateUserRole = async (req, res, next) => {
   try {
     const result = await adminService.updateUserRole({
-        actorUserId: req.user.sub,
+        // BUG FIX: same as updateUserStatus above — was req.user.sub,
+        // silently defeating the "can't change your own role" guard too.
+        actorUserId: req.user.id,
 
         targetUserId: req.params.userId,
         role: req.body.role,
@@ -69,10 +77,30 @@ const updateUserRole = async (req, res, next) => {
   }
 };
 
+const creditUserWallet = async (req, res, next) => {
+  try {
+    const result = await adminService.creditUserWallet({
+      actorUserId: req.user.id,
+      targetUserId: req.params.userId,
+      amount: req.body.amount,
+      reason: req.body.reason,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Wallet credited successfully.",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 
 module.exports = {
   getUsers,
     updateUserStatus,
     updateUserRole,
+    creditUserWallet,
 };
