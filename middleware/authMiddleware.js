@@ -38,6 +38,20 @@ const auth = async (req, res, next) => {
     const decoded = verifyToken(token);
     console.log("got here token",decoded);
 
+    // DEFENSIVE FIX: if the token is valid JWT but somehow carries no
+    // `sub` claim (a stale token from before some change, or one issued
+    // a different way), don't let that reach Prisma as `where: { id:
+    // undefined }` — that throws an ugly validation error and, worse,
+    // Prisma treats a missing unique-input value as "match nothing
+    // specific", which is never what we want for an identity lookup.
+    // Fail cleanly with a normal 401 instead.
+    if (!decoded?.sub) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid access token — please log in again.",
+      });
+    }
+
     const currentUser = await prisma.user.findUnique({
       where: { id: decoded.sub },
       select: { id: true, role: true, status: true },
