@@ -36,6 +36,7 @@ const auth = async (req, res, next) => {
 
   try {
     const decoded = verifyToken(token);
+    console.log("got here token",decoded);
 
     const currentUser = await prisma.user.findUnique({
       where: { id: decoded.sub },

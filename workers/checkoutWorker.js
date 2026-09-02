@@ -1,7 +1,6 @@
 const prisma = require("../helper/prisma");
 const { getIO } = require("../socket");
 
-
 const getCurrentTimeForTimezone = (timezone) => {
   const formatter = new Intl.DateTimeFormat("en-GB", {
     timeZone: timezone,
@@ -12,7 +11,6 @@ const getCurrentTimeForTimezone = (timezone) => {
 
   return formatter.format(new Date());
 };
-
 
 const getTodayForTimezone = (timezone) => {
   const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -25,7 +23,6 @@ const getTodayForTimezone = (timezone) => {
   return formatter.format(new Date());
 };
 
-
 const getCurrentWeekday = (timezone) => {
   return new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
@@ -34,7 +31,6 @@ const getCurrentWeekday = (timezone) => {
     .format(new Date())
     .toLowerCase();
 };
-
 
 const isOperatingDay = ({ timezone, operatingDays }) => {
   const currentWeekday = getCurrentWeekday(timezone);
@@ -48,8 +44,8 @@ const isOperatingDay = ({ timezone, operatingDays }) => {
  * ==========================================================================
  */
 const processBranch = async (branch) => {
- // Check whether today is an operating day
-  
+  // Check whether today is an operating day
+
   if (
     !isOperatingDay({
       timezone: branch.timezone,
@@ -66,8 +62,8 @@ const processBranch = async (branch) => {
    */
   const currentTime = getCurrentTimeForTimezone(branch.timezone);
 
- // The worker does nothing until the branch reaches closing time.
-   
+  // The worker does nothing until the branch reaches closing time.
+
   if (currentTime < branch.closingTime) {
     return;
   }
@@ -79,7 +75,6 @@ const processBranch = async (branch) => {
    */
   const today = getTodayForTimezone(branch.timezone);
 
- 
   const businessDate = new Date(`${today}T00:00:00.000Z`);
 
   /*
@@ -118,16 +113,14 @@ const processBranch = async (branch) => {
     },
   });
 
-  
   if (openCheckIns.length === 0) {
     return;
   }
 
   // Checkout each user
-   
+
   for (const checkIn of openCheckIns) {
     try {
-     
       const updatedCheckIn = await prisma.checkIn.update({
         where: {
           id: checkIn.id,
@@ -149,9 +142,8 @@ const processBranch = async (branch) => {
         },
       });
 
-     
-       // Notify connected dashboards immediately.
-       
+      // Notify connected dashboards immediately.
+
       try {
         const io = getIO();
 
@@ -170,20 +162,17 @@ const processBranch = async (branch) => {
 
           checkedOutAt: updatedCheckIn.checkedOutAt,
 
-        
           source: "SYSTEM",
         });
       } catch (socketError) {
-       
         console.error(
           "Failed to emit automatic checkout update:",
           socketError.message,
         );
       }
     } catch (error) {
-      
       //  If one user fails to checkout, continue processing the remaining users at the branch.
-       
+
       console.error(
         `Failed to automatically checkout user ${checkIn.userId}:`,
         error.message,
@@ -192,17 +181,16 @@ const processBranch = async (branch) => {
   }
 };
 
-
 /* ==========================================================================
  * RUN AUTOMATIC CHECKOUT
-*   Retrieves every active branch and processes them independently.
-*==========================================================================
-*/
+ *   Retrieves every active branch and processes them independently.
+ *==========================================================================
+ */
 
- 
 const runAutoCheckout = async () => {
   try {
-    
+    console.log("got here");
+
     const branches = await prisma.branch.findMany({
       where: {
         status: "ACTIVE",
@@ -231,11 +219,9 @@ const runAutoCheckout = async () => {
       }
     }
   } catch (error) {
-     
     console.error("Automatic checkout worker failed:", error);
   }
 };
-
 
 module.exports = {
   runAutoCheckout,
