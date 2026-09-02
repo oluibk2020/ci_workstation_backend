@@ -189,7 +189,6 @@ const processBranch = async (branch) => {
 
 const runAutoCheckout = async () => {
   try {
-    console.log("got here");
 
     const branches = await prisma.branch.findMany({
       where: {

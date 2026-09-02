@@ -36,7 +36,6 @@ const auth = async (req, res, next) => {
 
   try {
     const decoded = verifyToken(token);
-    console.log("got here token",decoded);
 
     // DEFENSIVE FIX: if the token is valid JWT but somehow carries no
     // `sub` claim (a stale token from before some change, or one issued

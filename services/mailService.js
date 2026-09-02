@@ -6,9 +6,9 @@ const nodemailer = require("nodemailer");
 // Port 465 (implicit TLS) times out on this network (confirmed via raw TCP
 // test), while 587 connects immediately, so we use STARTTLS on 587.
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
+  host: "mail.charisintelligence.com.ng",
+  port: 465,
+  secure: true,
   requireTLS: true,
   auth: {
     user: process.env.EMAIL_USER,
