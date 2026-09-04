@@ -7,8 +7,8 @@ const nodemailer = require("nodemailer");
 // test), while 587 connects immediately, so we use STARTTLS on 587.
 const transporter = nodemailer.createTransport({
   host: "mail.charisintelligence.com.ng",
-  port: 587,
-  secure: false,
+  port: 465,
+  secure: true,
   requireTLS: true,
   auth: {
     user: process.env.EMAIL_USER,
