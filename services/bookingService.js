@@ -968,9 +968,67 @@ const getTodaysBookings = async ({ branchId }) => {
   };
 };
 
+/**
+ * NEW — "All users that booked should be seen" was requested directly.
+ * Before this, the only booking-visibility endpoints were `getMyBookings`
+ * (scoped to one user) and `getTodaysBookings` (scoped to one branch, one
+ * day). There was no way for Staff/Admin to see the full history of who's
+ * booked, across all users, all branches, all time. This is that view —
+ * paginated, newest first, with optional status/branch filters.
+ */
+const getAllBookingsAdmin = async ({
+  page = 1,
+  limit = 20,
+  status,
+  branchId,
+}) => {
+  const currentPage = Math.max(Number(page) || 1, 1);
+  const pageSize = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  const skip = (currentPage - 1) * pageSize;
+
+  const where = {
+    ...(status && { status }),
+    ...(branchId && { branchId }),
+  };
+
+  const [total, bookings] = await prisma.$transaction([
+    prisma.booking.count({ where }),
+    prisma.booking.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: pageSize,
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        totalAmount: true,
+        createdAt: true,
+        bookedBy: { select: { id: true, name: true, email: true } },
+        beneficiary: { select: { id: true, name: true, email: true } },
+        branch: { select: { id: true, name: true } },
+        workstation: { select: { id: true, name: true } },
+        seat: { select: { id: true, seatId: true } },
+        dates: { select: { id: true, bookingDate: true, status: true } },
+      },
+    }),
+  ]);
+
+  return {
+    bookings,
+    pagination: {
+      page: currentPage,
+      limit: pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+    },
+  };
+};
+
 module.exports = {
   createBooking,
   getMyBookings,
   getBookingById,
   getTodaysBookings,
+  getAllBookingsAdmin,
 };

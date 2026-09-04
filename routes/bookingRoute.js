@@ -31,6 +31,16 @@ router.get(
   bookingController.getReassignmentHistory,
 );
 
+// NEW — same route-order reasoning as "/today" above. See
+// services/bookingService.js's getAllBookingsAdmin header — "All users
+// that booked should be seen" was requested directly.
+router.get(
+  "/admin/all",
+  auth,
+  requireRole("STAFF", "SUPER_ADMIN"),
+  bookingController.getAllBookingsAdmin,
+);
+
 router.get("/:bookingId", auth, bookingController.getBookingById);
 
 // NEW — see services/cancellationService.js and reassignmentService.js

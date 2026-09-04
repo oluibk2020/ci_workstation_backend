@@ -90,9 +90,30 @@ const updateWorkstationStatus = async (req, res, next) => {
   }
 };
 
+// NEW — Admin-only, returns ALL statuses. See
+// services/workStationService.js's getAllWorkstationsByBranchAdmin header.
+const getAllWorkstationsByBranchAdmin = async (req, res, next) => {
+  try {
+    const workstations = await workstationService.getAllWorkstationsByBranchAdmin(
+      req.params.branchId,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Workstations retrieved successfully.",
+      data: {
+        workstations,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createWorkstation,
   getWorkstationsByBranch,
+  getAllWorkstationsByBranchAdmin,
   getWorkstationById,
   updateWorkstation,
   updateWorkstationStatus,
