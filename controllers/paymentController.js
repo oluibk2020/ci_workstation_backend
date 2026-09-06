@@ -2,11 +2,24 @@ const paymentService = require("../services/paymentService");
 
 const initializePayment = async (req, res, next) => {
   try {
-    const { amount } = req.body;
+    const { amount, email } = req.body;
+
+    // NEW — requested directly: let someone use a different email for
+    // this specific payment's Paystack receipt than their account login
+    // email, while still defaulting sensibly to their account email if
+    // they don't specify one. Basic format check only — Paystack itself
+    // will reject a genuinely invalid address.
+    const emailToUse = (email || req.user.email || "").trim();
+    if (!emailToUse || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailToUse)) {
+      return res.status(400).json({
+        success: false,
+        message: "A valid email is required to initialize this payment.",
+      });
+    }
 
     const result = await paymentService.initializePayment({
       userId: req.user.id,
-      email: req.user.email,
+      email: emailToUse,
       amount,
     });
 
@@ -92,9 +105,9 @@ const getAllPayments = async (req, res, next) => {
 };
 
 module.exports = {
-    initializePayment,
-    verifyPayment,
-    handlePaystackWebhook,
-    getMyPayments,
-    getAllPayments
+  initializePayment,
+  verifyPayment,
+  handlePaystackWebhook,
+  getMyPayments,
+  getAllPayments,
 };

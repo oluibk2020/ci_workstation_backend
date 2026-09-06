@@ -38,7 +38,10 @@ const initializePayment = async ({ userId, email, amount }) => {
           email,
           amount: amountInKobo,
           reference,
-          callback_url: `${process.env.FRONTEND_URL}/payment/callback`,
+          // Defensive: strips a trailing slash if FRONTEND_URL has one
+          // (e.g. "http://localhost:5173/") so this never produces a
+          // double slash like ".../5173//payment/callback".
+          callback_url: `${(process.env.FRONTEND_URL || "").replace(/\/$/, "")}/payment/callback`,
         }),
       },
     );
@@ -72,6 +75,53 @@ const initializePayment = async ({ userId, email, amount }) => {
 
 //--------------------------------------------------------
 
+/**
+ * BUG FIX — shared by both handlePaystackWebhook and verifyPayment below.
+ * Previously, only the webhook actually credited the wallet — verify()
+ * just read Paystack's status back and returned it, doing nothing else.
+ * This is a real problem for local development and testing: Paystack's
+ * webhook cannot reach `localhost`, so with no publicly reachable webhook
+ * URL configured, a payment could show as fully successful on Paystack's
+ * own dashboard and still never credit the wallet at all — the only
+ * completion path that existed was unreachable outside production.
+ *
+ * Idempotent by design (checks payment.status === "SUCCESS" first) so
+ * it's safe to call from both places — if the webhook already completed
+ * it, a later verify() call is a safe no-op, and vice versa.
+ */
+const completePaymentIfNeeded = async ({
+  payment,
+  amountPaidInNaira,
+  reference,
+}) => {
+  if (payment.status === "SUCCESS") {
+    return payment;
+  }
+
+  if (Number(payment.amount) !== amountPaidInNaira) {
+    throw new Error("Payment amount mismatch.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.payment.update({
+      where: { id: payment.id },
+      data: { status: "SUCCESS", paidAt: new Date() },
+    });
+
+    await walletService.creditWallet({
+      tx,
+      userId: payment.userId,
+      amount: payment.amount,
+      type: "PAYSTACK_FUNDING",
+      reference,
+      paymentId: payment.id,
+      description: "Wallet funded through Paystack.",
+    });
+
+    return updated;
+  });
+};
+
 const verifyPayment = async (reference) => {
   const response = await fetch(
     `${PAYSTACK_BASE_URL}/transaction/verify/${reference}`,
@@ -85,6 +135,27 @@ const verifyPayment = async (reference) => {
 
   if (!response.ok || !data.status) {
     throw new Error(data.message || "Unable to verify payment.");
+  }
+
+  // BUG FIX: this used to stop here and just return Paystack's raw data
+  // — see completePaymentIfNeeded's header for the full problem that
+  // caused. Now actually completes the payment (credits the wallet) the
+  // same way the webhook does, if Paystack confirms it succeeded and it
+  // hasn't been completed already.
+  if (data.data.status === "success") {
+    const payment = await prisma.payment.findUnique({
+      where: { providerReference: reference },
+    });
+
+    if (!payment) {
+      throw new Error("Payment not found.");
+    }
+
+    await completePaymentIfNeeded({
+      payment,
+      amountPaidInNaira: data.data.amount / 100,
+      reference,
+    });
   }
 
   return data.data;
@@ -139,36 +210,12 @@ const handlePaystackWebhook = async ({ signature, rawBody }) => {
     throw new Error("Payment not found.");
   }
 
-  if (payment.status === "SUCCESS") {
-    return;
-  }
-
-  const amountInNaira = event.data.amount / 100;
-
-  if (Number(payment.amount) !== amountInNaira) {
-    throw new Error("Payment amount mismatch.");
-  }
-
-  await prisma.$transaction(async (tx) => {
-    await tx.payment.update({
-      where: {
-        id: payment.id,
-      },
-      data: {
-        status: "SUCCESS",
-        paidAt: new Date(),
-      },
-    });
-
-    await walletService.creditWallet({
-      tx,
-      userId: payment.userId,
-      amount: payment.amount,
-      type: "PAYSTACK_FUNDING",
-      reference,
-      paymentId: payment.id,
-      description: "Wallet funded through Paystack.",
-    });
+  // Uses the same shared, idempotent completion helper verifyPayment
+  // uses — see completePaymentIfNeeded's header above.
+  await completePaymentIfNeeded({
+    payment,
+    amountPaidInNaira: event.data.amount / 100,
+    reference,
   });
 };
 

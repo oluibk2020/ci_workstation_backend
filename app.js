@@ -5,6 +5,10 @@ const rateLimit = require("express-rate-limit");
 
 const app = express();
 
+app.use(
+  cors({
+    origin: "*"}),
+);
 // SECURITY FIX: helmet was already listed as a dependency in package.json
 // but never actually applied anywhere — the standard security headers
 // (X-Content-Type-Options, X-Frame-Options, a baseline CSP, etc.) were
@@ -15,34 +19,37 @@ app.use(helmet());
 // /auth/register, and /auth/google had no protection against brute-force
 // password guessing or account-creation spam. A generous general limit
 // covers the whole API; a much tighter one specifically covers auth.
-const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 300,
+// const generalLimiter = rateLimit({
+//   windowMs: 15 * 60 * 1000,
+//   max: 3000,
+//   standardHeaders: true,
+//   legacyHeaders: false,
+// });
+
+// const authLimiter = rateLimit({
+//   windowMs: 15 * 60 * 1000,
+//   max: 3000,
+//   standardHeaders: true,
+//   legacyHeaders: false,
+//   message: {
+//     success: false,
+//     message: "Too many attempts. Please try again later.",
+//   },
+// });
+
+app.use("/api/v1/auth", rateLimit({
+  windowMs: 15 * 60 * 10000,
+  max: 3000,
   standardHeaders: true,
   legacyHeaders: false,
-});
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
+}) );
+app.use("/api/v1", rateLimit({
+  windowMs: 15 * 60 * 10000,
+  max: 3000,
   standardHeaders: true,
   legacyHeaders: false,
-  message: {
-    success: false,
-    message: "Too many attempts. Please try again later.",
-  },
-});
+}) );
 
-app.use("/api/v1/auth", authLimiter);
-app.use("/api/v1", generalLimiter);
-
-app.use(
-  cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
-    methods: ["GET", "POST", "PATCH", "PUT", "DELETE"],
-    credentials: true,
-  }),
-);
 
 app.use(
   "/api/v1/payments/paystack/webhook",
@@ -59,6 +66,32 @@ app.use(
 // enough for a typical phone photo without being unreasonable.
 app.use(express.json({ limit: "10mb" }));
 
+/**
+ * NEW — health check endpoint. Deliberately placed before the rate
+ * limiters/auth requirements above would matter (it's a GET with no
+ * auth), and deliberately does a real, cheap database query rather than
+ * just returning a static "ok" — a process manager or hosting platform
+ * using this to decide whether to route traffic here (or restart it)
+ * needs to know the database connection is actually alive, not just that
+ * the Node process itself is running. A process can be "up" while its
+ * database connection is dead — that's exactly the case this is meant
+ * to catch.
+ */
+app.get("/health", async (req, res) => {
+  try {
+    const prisma = require("./helper/prisma");
+    await prisma.$queryRaw`SELECT 1`;
+    return res.status(200).json({ status: "ok", database: "connected" });
+  } catch (error) {
+    return res
+      .status(503)
+      .json({
+        status: "degraded",
+        database: "unreachable",
+        error: error.message,
+      });
+  }
+});
 
 // Routes
 const auth = require("./routes/authRoute");

@@ -21,7 +21,14 @@ const register = async ({ name, email, password }) => {
 
   const passwordHash = await bcrypt.hash(password, 12);
 
-  const user = await prisma.$transaction(async (tx) => {
+  // BUG FIX: this used to destructure into a variable also named `user`,
+  // shadowing nothing syntactically but colliding semantically with the
+  // `{ user, qrCode }` shape returned below — every `user.id`/`user.role`
+  // read after the transaction was actually reading properties off the
+  // wrapper object, not the Prisma record, and came back undefined. That
+  // produced an empty `user: {}` in the response and a JWT signed with
+  // no `sub`/`role` claims at all.
+  const { user: newUser, qrCode } = await prisma.$transaction(async (tx) => {
     const newUser = await tx.user.create({
       data: {
         name: name.trim(),
@@ -52,20 +59,20 @@ const register = async ({ name, email, password }) => {
       qrCode,
     };
   });
-  const token = generateToken({ sub: user.id, role: user.role });
+  const token = generateToken({ sub: newUser.id, role: newUser.role });
 
   return {
     user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      status: user.status,
-      verificationStatus: user.verificationStatus,
-      emailVerifiedAt: user.emailVerifiedAt,
+      id: newUser.id,
+      name: newUser.name,
+      email: newUser.email,
+      role: newUser.role,
+      status: newUser.status,
+      verificationStatus: newUser.verificationStatus,
+      emailVerifiedAt: newUser.emailVerifiedAt,
     },
     token,
-    qrCode: user.qrCode,
+    qrCode,
   };
 };
 
@@ -96,6 +103,11 @@ const googleLogin = async ({ idToken }) => {
     },
   });
   if (!user) {
+    // BUG FIX: same shadowing bug as register() — the transaction
+    // returned { user: newUser, qrCode }, which got assigned straight to
+    // the outer `user` variable. Every `user.id`/`user.role` read below
+    // was then undefined for a brand-new Google sign-up, producing an
+    // empty user object and a JWT with no sub/role claims.
     user = await prisma.$transaction(async (tx) => {
       const newUser = await tx.user.create({
         data: {
@@ -117,7 +129,7 @@ const googleLogin = async ({ idToken }) => {
         },
       });
 
-      const qrCode = await qrCodeService.generateQRCode({
+      await qrCodeService.generateQRCode({
         userId: newUser.id,
         tx,
       });
@@ -128,10 +140,7 @@ const googleLogin = async ({ idToken }) => {
         console.error("Welcome email failed:", err.message);
       }
 
-      return {
-        user: newUser,
-        qrCode,
-      };
+      return newUser;
     });
   }
 
