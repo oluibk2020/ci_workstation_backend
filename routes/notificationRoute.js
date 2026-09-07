@@ -28,7 +28,6 @@ router.post(
   notificationController.broadcastNotification,
 );
 
-
 router.post(
   "/email-broadcast",
   authMiddleware,
@@ -41,7 +40,7 @@ router.get(
   "/",
   authMiddleware,
   validateNotificationQuery,
-  validateBroadcastNotification,
+
   notificationController.getMyNotifications,
 );
 

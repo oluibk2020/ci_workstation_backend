@@ -35,6 +35,11 @@ const register = async ({ name, email, password, termsAccepted }) => {
   // wrapper object, not the Prisma record, and came back undefined. That
   // produced an empty `user: {}` in the response and a JWT signed with
   // no `sub`/`role` claims at all.
+  //
+  // PERFORMANCE FIX: moved email sending outside transaction. Email operations
+  // are slow I/O-bound tasks that exceed the 5-second Prisma transaction
+  // timeout, causing the entire signup to fail. Now the transaction completes
+  // quickly with just database operations, and email is sent asynchronously.
   const { user: newUser, qrCode } = await prisma.$transaction(async (tx) => {
     const newUser = await tx.user.create({
       data: {
@@ -57,17 +62,18 @@ const register = async ({ name, email, password, termsAccepted }) => {
       tx,
     });
 
-    try {
-      await sendWelcomeEmail(newUser.email);
-    } catch (err) {
-      console.error("Welcome email failed:", err.message);
-    }
-
     return {
       user: newUser,
       qrCode,
     };
   });
+
+  // Send welcome email asynchronously after transaction completes
+  // Do not await or block the response
+  sendWelcomeEmail(newUser.email).catch((err) => {
+    console.error("Welcome email failed:", err.message);
+  });
+
   const token = generateToken({ sub: newUser.id, role: newUser.role });
 
   return {
@@ -117,6 +123,11 @@ const googleLogin = async ({ idToken, termsAccepted }) => {
     // the outer `user` variable. Every `user.id`/`user.role` read below
     // was then undefined for a brand-new Google sign-up, producing an
     // empty user object and a JWT with no sub/role claims.
+    //
+    // PERFORMANCE FIX: moved email sending outside transaction. Email operations
+    // are slow I/O-bound tasks that exceed the 5-second Prisma transaction
+    // timeout, causing the entire signup to fail. Now the transaction completes
+    // quickly with just database operations, and email is sent asynchronously.
     user = await prisma.$transaction(async (tx) => {
       const newUser = await tx.user.create({
         data: {
@@ -145,13 +156,13 @@ const googleLogin = async ({ idToken, termsAccepted }) => {
         tx,
       });
 
-      try {
-        await sendWelcomeEmail(newUser.email);
-      } catch (err) {
-        console.error("Welcome email failed:", err.message);
-      }
-
       return newUser;
+    });
+
+    // Send welcome email asynchronously after transaction completes
+    // Do not await or block the response
+    sendWelcomeEmail(user.email).catch((err) => {
+      console.error("Welcome email failed:", err.message);
     });
   }
 
