@@ -1,6 +1,14 @@
 const prisma = require("../helper/prisma");
 
 const createWorkstation = async ({ branchId, name, pricePerDay }) => {
+  const numericPrice = Number(pricePerDay);
+  if (!name || typeof name !== "string" || !name.trim()) {
+    throw new Error("Workstation name is required.");
+  }
+  if (!Number.isFinite(numericPrice) || numericPrice <= 0) {
+    throw new Error("pricePerDay must be a valid number greater than zero.");
+  }
+
   const branch = await prisma.branch.findUnique({
     where: {
       id: branchId,
@@ -13,7 +21,8 @@ const createWorkstation = async ({ branchId, name, pricePerDay }) => {
 
   const existingWorkstation = await prisma.workstation.findFirst({
     where: {
-      name,
+      branchId,
+      name: name.trim(),
     },
   });
 
@@ -26,7 +35,7 @@ const createWorkstation = async ({ branchId, name, pricePerDay }) => {
     data: {
       branchId,
       name: name.trim(),
-      pricePerDay,
+      pricePerDay: numericPrice,
     },
   });
 
@@ -56,9 +65,10 @@ const getWorkstationsByBranch = async (branchId) => {
 };
 
 const getWorkstationById = async (workstationId) => {
-  const workstation = await prisma.workstation.findUnique({
+  const workstation = await prisma.workstation.findFirst({
     where: {
       id: workstationId,
+      status: "ACTIVE",
     },
   });
 
@@ -80,6 +90,27 @@ const updateWorkstation = async (workstationId, { name, pricePerDay }) => {
     throw new Error("Workstation not found.");
   }
 
+  if (name !== undefined && (typeof name !== "string" || !name.trim())) {
+    throw new Error("Workstation name cannot be empty.");
+  }
+  if (pricePerDay !== undefined) {
+    const numericPrice = Number(pricePerDay);
+    if (!Number.isFinite(numericPrice) || numericPrice <= 0) {
+      throw new Error("pricePerDay must be a valid number greater than zero.");
+    }
+  }
+
+  if (name !== undefined) {
+    const duplicate = await prisma.workstation.findFirst({
+      where: {
+        branchId: workstation.branchId,
+        name: name.trim(),
+        NOT: { id: workstationId },
+      },
+    });
+    if (duplicate) throw new Error("A workstation type with that name already exists in this branch.");
+  }
+
   return prisma.workstation.update({
     where: {
       id: workstationId,
@@ -90,7 +121,7 @@ const updateWorkstation = async (workstationId, { name, pricePerDay }) => {
       }),
 
       ...(pricePerDay !== undefined && {
-        pricePerDay,
+        pricePerDay: Number(pricePerDay),
       }),
     },
   });

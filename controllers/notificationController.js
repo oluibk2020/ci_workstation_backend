@@ -90,9 +90,28 @@ const markAllNotificationsAsRead = async (req, res, next) => {
   }
 };
 
+const broadcastNotification = async (req, res, next) => {
+  try {
+    const result = await notificationService.broadcastNotification({
+      actorUserId: req.user.id,
+      title: req.body.title,
+      message: req.body.message,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: `Notification sent to ${result.sentCount} user${result.sentCount === 1 ? "" : "s"}.`,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getMyNotifications,
   getNotificationById,
   markNotificationAsRead,
   markAllNotificationsAsRead,
+  broadcastNotification,
 };

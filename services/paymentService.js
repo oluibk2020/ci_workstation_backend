@@ -4,12 +4,16 @@ const { PAYSTACK_BASE_URL, getPaystackHeaders } = require("../config/paystack");
 const walletService = require("./walletService");
 
 const initializePayment = async ({ userId, email, amount }) => {
-  // Convert Naira to Kobo
-  const amountInKobo = Math.round(Number(amount) * 100);
-
-  if (amountInKobo <= 0) {
-    throw new Error("Amount must be greater than zero.");
+  // Normalize to the same two-decimal amount that Paystack receives so
+  // later verification cannot fail because the database stored a value
+  // such as 100.001 while Paystack settled 100.00.
+  const numericAmount = Number(amount);
+  if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    throw new Error("Amount must be a valid number greater than zero.");
   }
+  const amountInKobo = Math.round(numericAmount * 100);
+  if (amountInKobo <= 0) throw new Error("Amount must be greater than zero.");
+  const normalizedAmount = amountInKobo / 100;
 
   // Create a unique reference
   const reference = `WS-${Date.now()}-${Math.random()
@@ -21,7 +25,7 @@ const initializePayment = async ({ userId, email, amount }) => {
   const payment = await prisma.payment.create({
     data: {
       userId,
-      amount,
+      amount: normalizedAmount,
       provider: "PAYSTACK",
       providerReference: reference,
       status: "PENDING",
@@ -103,10 +107,23 @@ const completePaymentIfNeeded = async ({
   }
 
   return prisma.$transaction(async (tx) => {
-    const updated = await tx.payment.update({
-      where: { id: payment.id },
+    // Conditional update makes webhook + callback completion truly idempotent.
+    // Two concurrent requests can both observe PENDING, but only one can
+    // transition the payment row and therefore only one can credit the wallet.
+    const transitioned = await tx.payment.updateMany({
+      where: {
+        id: payment.id,
+        status: { in: ["INITIATED", "PENDING"] },
+      },
       data: { status: "SUCCESS", paidAt: new Date() },
     });
+
+    if (transitioned.count === 0) {
+      const current = await tx.payment.findUnique({ where: { id: payment.id } });
+      return current || payment;
+    }
+
+    const updated = await tx.payment.findUnique({ where: { id: payment.id } });
 
     await walletService.creditWallet({
       tx,
@@ -122,7 +139,7 @@ const completePaymentIfNeeded = async ({
   });
 };
 
-const verifyPayment = async (reference) => {
+const verifyPayment = async ({ reference, userId }) => {
   const response = await fetch(
     `${PAYSTACK_BASE_URL}/transaction/verify/${reference}`,
     {
@@ -143,8 +160,8 @@ const verifyPayment = async (reference) => {
   // same way the webhook does, if Paystack confirms it succeeded and it
   // hasn't been completed already.
   if (data.data.status === "success") {
-    const payment = await prisma.payment.findUnique({
-      where: { providerReference: reference },
+    const payment = await prisma.payment.findFirst({
+      where: { providerReference: reference, userId },
     });
 
     if (!payment) {

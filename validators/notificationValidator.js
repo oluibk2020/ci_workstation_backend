@@ -48,6 +48,24 @@ const validateNotificationQuery = (req, res, next) => {
   next();
 };
 
+const validateBroadcastNotification = (req, res, next) => {
+  const { title, message } = req.body;
+  if (typeof title !== "string" || !title.trim()) {
+    return res.status(400).json({ success: false, message: "Notification title is required." });
+  }
+  if (typeof message !== "string" || !message.trim()) {
+    return res.status(400).json({ success: false, message: "Notification message is required." });
+  }
+  if (title.trim().length > 120) {
+    return res.status(400).json({ success: false, message: "Notification title must be 120 characters or fewer." });
+  }
+  if (message.trim().length > 5000) {
+    return res.status(400).json({ success: false, message: "Notification message must be 5000 characters or fewer." });
+  }
+  next();
+};
+
 module.exports = {
   validateNotificationQuery,
+  validateBroadcastNotification,
 };

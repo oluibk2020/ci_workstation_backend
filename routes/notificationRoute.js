@@ -4,9 +4,11 @@ const notificationController = require("../controllers/notificationController");
 
 const {
   validateNotificationQuery,
+  validateBroadcastNotification,
 } = require("../validators/notificationValidator");
 
 const authMiddleware = require("../middleware/authMiddleware");
+const requireRole = require("../middleware/roleMiddleware");
 
 const router = express.Router();
 
@@ -17,10 +19,19 @@ const router = express.Router();
  *
  * GET /api/v1/notifications
  */
+router.post(
+  "/broadcast",
+  authMiddleware,
+  requireRole("SUPER_ADMIN", "STAFF"),
+  validateBroadcastNotification,
+  notificationController.broadcastNotification,
+);
+
 router.get(
   "/",
   authMiddleware,
   validateNotificationQuery,
+  validateBroadcastNotification,
   notificationController.getMyNotifications,
 );
 

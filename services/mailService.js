@@ -7,8 +7,8 @@ const nodemailer = require("nodemailer");
 // test), while 587 connects immediately, so we use STARTTLS on 587.
 const transporter = nodemailer.createTransport({
   host: "mail.charisintelligence.com.ng",
-  port: 465,
-  secure: true,
+  port: 587,
+  secure: false,
   requireTLS: true,
   auth: {
     user: process.env.EMAIL_USER,
@@ -190,9 +190,39 @@ const sendSuspensionEmail = async (email) => {
   });
 };
 
+const sendPasswordResetEmail = async ({ email, token }) => {
+  const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+  const resetUrl = `${frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
+
+  await sendEmail({
+    to: email,
+    subject: "Reset your Workstation password",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border:1px solid #ddd; border-radius:10px; overflow:hidden;">
+        <div style="background:#2563eb; color:white; padding:20px; text-align:center;">
+          <h1>CharisIntelligence Workstation</h1>
+        </div>
+        <div style="padding:30px;">
+          <h2>Password reset requested</h2>
+          <p>We received a request to reset the password for this account.</p>
+          <div style="text-align:center; margin:30px 0;">
+            <a href="${resetUrl}" style="background:#2563eb; color:white; padding:12px 24px; text-decoration:none; border-radius:5px;">
+              Reset password
+            </a>
+          </div>
+          <p>This link expires in 15 minutes. If you did not request a reset, you can safely ignore this email.</p>
+          <hr>
+          <small>© 2026 CharisIntelligence Workstation. All rights reserved.</small>
+        </div>
+      </div>
+    `,
+  });
+};
+
 module.exports = {
   sendEmail,
   sendWelcomeEmail,
   sendSuspensionEmail,
   sendBookingEmail,
+  sendPasswordResetEmail,
 };

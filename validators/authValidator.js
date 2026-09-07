@@ -1,5 +1,5 @@
 const validateRegister = (req, res, next) => {
-  const { name, email, password } = req.body;
+  const { name, email, password, termsAccepted } = req.body;
 
   if (!name || !email || !password) {
     return res.status(400).json({
@@ -17,6 +17,14 @@ const validateRegister = (req, res, next) => {
     return res.status(400).json({
       success: false,
       message: "Invalid input.",
+    });
+  }
+
+  if (termsAccepted !== true) {
+    return res.status(400).json({
+      success: false,
+      message: "You must read and accept the Terms and Conditions before creating an account.",
+      code: "TERMS_REQUIRED",
     });
   }
 
@@ -72,4 +80,23 @@ const validateGoogleLogin = (req, res, next) => {
 
 
 
-module.exports = { validateRegister, validateLogin, validateGoogleLogin };
+const validateForgotPassword = (req, res, next) => {
+  const { email } = req.body;
+  if (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    return res.status(400).json({ success: false, message: "A valid email is required." });
+  }
+  next();
+};
+
+const validateResetPassword = (req, res, next) => {
+  const { token, password } = req.body;
+  if (typeof token !== "string" || !token) {
+    return res.status(400).json({ success: false, message: "Reset token is required." });
+  }
+  if (typeof password !== "string" || password.length < 8) {
+    return res.status(400).json({ success: false, message: "Password must be at least 8 characters." });
+  }
+  next();
+};
+
+module.exports = { validateRegister, validateLogin, validateGoogleLogin, validateForgotPassword, validateResetPassword };

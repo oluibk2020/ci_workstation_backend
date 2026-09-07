@@ -8,7 +8,12 @@ const { isValidImageDataUri } = require("../helper/imageValidation");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-const register = async ({ name, email, password }) => {
+const TERMS_VERSION = process.env.TERMS_VERSION || "1.0";
+
+const register = async ({ name, email, password, termsAccepted }) => {
+  if (termsAccepted !== true) {
+    throw new Error("You must read and accept the Terms and Conditions before creating an account.");
+  }
   const normalizeEmail = email.toLowerCase().trim();
 
   const existingUser = await prisma.user.findUnique({
@@ -34,6 +39,8 @@ const register = async ({ name, email, password }) => {
         name: name.trim(),
         email: normalizeEmail,
         passwordHash,
+        termsAcceptedAt: new Date(),
+        termsVersion: TERMS_VERSION,
       },
     });
 
@@ -78,7 +85,10 @@ const register = async ({ name, email, password }) => {
 
 //------------------------------------------------
 
-const googleLogin = async ({ idToken }) => {
+const googleLogin = async ({ idToken, termsAccepted }) => {
+  if (termsAccepted !== true) {
+    throw new Error("You must read and accept the Terms and Conditions before creating an account.");
+  }
   if (!process.env.GOOGLE_CLIENT_ID) {
     throw new Error("GOOGLE_CLIENT_ID is not configured.");
   }
@@ -120,6 +130,8 @@ const googleLogin = async ({ idToken }) => {
           status: "ACTIVE",
           verificationStatus: "UNVERIFIED",
           emailVerifiedAt: new Date(),
+          termsAcceptedAt: new Date(),
+          termsVersion: TERMS_VERSION,
         },
       });
 
@@ -211,6 +223,8 @@ const getMe = async (userId) => {
       verificationStatus: true,
       profileImageUrl: true,
       emailVerifiedAt: true,
+      termsAcceptedAt: true,
+      termsVersion: true,
       createdAt: true,
       updatedAt: true,
     },
