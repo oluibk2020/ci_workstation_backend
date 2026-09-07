@@ -203,10 +203,34 @@ const markAllNotificationsAsRead = async (userId) => {
   };
 };
 
+const broadcastNotification = async ({ actorUserId, title, message }) => {
+  const users = await prisma.user.findMany({
+    where: { status: "ACTIVE" },
+    select: { id: true },
+  });
+
+  if (users.length === 0) {
+    return { sentCount: 0 };
+  }
+
+  const result = await prisma.notification.createMany({
+    data: users.map(({ id }) => ({
+      userId: id,
+      type: "SYSTEM",
+      title: title.trim(),
+      message: message.trim(),
+      metadata: { broadcast: true, sentBy: actorUserId },
+    })),
+  });
+
+  return { sentCount: result.count };
+};
+
 module.exports = {
   createNotification,
   getMyNotifications,
   getNotificationById,
   markNotificationAsRead,
   markAllNotificationsAsRead,
+  broadcastNotification,
 };

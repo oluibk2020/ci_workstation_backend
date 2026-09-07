@@ -2,7 +2,6 @@ const authService = require("../services/authService");
 
 const register = async (req, res, next) => {
   try {
-    console.log("got here", req.body);
     const user = await authService.register(req.body);
 
     return res.status(201).json({
@@ -87,12 +86,40 @@ const updateProfile = async (req, res, next) => {
 
 
 
+const forgotPassword = async (req, res, next) => {
+  try {
+    const forgetPasswordService = require("../services/forgetPasswordService");
+    await forgetPasswordService.requestPasswordReset(req.body.email);
+    return res.status(200).json({
+      success: true,
+      message: "If an account exists for that email, a password reset link has been sent.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const resetPassword = async (req, res, next) => {
+  try {
+    const resetPasswordService = require("../services/resetPasswordService");
+    await resetPasswordService.resetPassword(req.body);
+    return res.status(200).json({
+      success: true,
+      message: "Password reset successfully. You can now log in.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   register,
     googleLogin,
     login,
     getMe,
-    updateProfile
+    updateProfile,
+    forgotPassword,
+    resetPassword,
 };
 
 

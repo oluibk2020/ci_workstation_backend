@@ -7,8 +7,8 @@ const nodemailer = require("nodemailer");
 // test), while 587 connects immediately, so we use STARTTLS on 587.
 const transporter = nodemailer.createTransport({
   host: "mail.charisintelligence.com.ng",
-  port: 465,
-  secure: true,
+  port: 587,
+  secure: false,
   requireTLS: true,
   auth: {
     user: process.env.EMAIL_USER,
@@ -190,9 +190,109 @@ const sendSuspensionEmail = async (email) => {
   });
 };
 
+const sendPasswordResetEmail = async ({ email, token }) => {
+  const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+  const resetUrl = `${frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
+
+  await sendEmail({
+    to: email,
+    subject: "Reset your Workstation password",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border:1px solid #ddd; border-radius:10px; overflow:hidden;">
+        <div style="background:#2563eb; color:white; padding:20px; text-align:center;">
+          <h1>CharisIntelligence Workstation</h1>
+        </div>
+        <div style="padding:30px;">
+          <h2>Password reset requested</h2>
+          <p>We received a request to reset the password for this account.</p>
+          <div style="text-align:center; margin:30px 0;">
+            <a href="${resetUrl}" style="background:#2563eb; color:white; padding:12px 24px; text-decoration:none; border-radius:5px;">
+              Reset password
+            </a>
+          </div>
+          <p>This link expires in 15 minutes. If you did not request a reset, you can safely ignore this email.</p>
+          <hr>
+          <small>© 2026 CharisIntelligence Workstation. All rights reserved.</small>
+        </div>
+      </div>
+    `,
+  });
+};
+
+
+// Sends the same plain-text announcement to groups of active users using BCC.
+// BCC keeps recipient email addresses private. Batching avoids creating an
+// enormous single SMTP message when the user base grows.
+const sendBroadcastEmail = async ({ subject, message, recipients, batchSize = 50 }) => {
+  if (!subject || typeof subject !== "string" || !subject.trim()) {
+    throw new Error("Email subject is required.");
+  }
+  if (!message || typeof message !== "string" || !message.trim()) {
+    throw new Error("Email message is required.");
+  }
+  if (!Array.isArray(recipients) || recipients.length === 0) {
+    return { sentCount: 0, failedCount: 0, failures: [] };
+  }
+
+  const safeSubject = subject.trim();
+  const safeMessage = message.trim();
+  const escapedMessage = safeMessage
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/\r?\n/g, "<br>");
+
+  let sentCount = 0;
+  const failures = [];
+
+  for (let index = 0; index < recipients.length; index += batchSize) {
+    const batch = recipients.slice(index, index + batchSize);
+    try {
+      await transporter.sendMail({
+        from: `"CharisIntelligence Workstation" <${process.env.EMAIL_USER}>`,
+        bcc: batch,
+        subject: safeSubject,
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;background:#fff;">
+            <div style="background:#2563eb;color:#fff;padding:22px;text-align:center;">
+              <h1 style="margin:0;font-size:22px;">CharisIntelligence Workstation</h1>
+            </div>
+            <div style="padding:30px;color:#1e293b;line-height:1.7;">
+              <h2 style="margin-top:0;">${safeSubject}</h2>
+              <p>${escapedMessage}</p>
+              <hr style="border:0;border-top:1px solid #e2e8f0;margin:28px 0;">
+              <small style="color:#64748b;">This email was sent by the Workstation administration team.</small>
+            </div>
+          </div>
+        `,
+        text: safeMessage,
+      });
+      sentCount += batch.length;
+    } catch (error) {
+      console.error(`Failed to send broadcast email batch ${index + 1}-${index + batch.length}:`, error.message);
+      failures.push({
+        batchStart: index + 1,
+        batchEnd: index + batch.length,
+        count: batch.length,
+        error: error.message,
+      });
+    }
+  }
+
+  return {
+    sentCount,
+    failedCount: recipients.length - sentCount,
+    failures,
+  };
+};
+
 module.exports = {
   sendEmail,
   sendWelcomeEmail,
   sendSuspensionEmail,
   sendBookingEmail,
+  sendPasswordResetEmail,
+  sendBroadcastEmail,
 };

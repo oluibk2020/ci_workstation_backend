@@ -17,6 +17,10 @@ async function main() {
       key: "max_monthly_reassignments",
       value: "3",
     },
+    {
+      key: "max_advance_booking_days",
+      value: "30",
+    },
   ];
 
   for (const config of configs) {
@@ -31,7 +35,11 @@ async function main() {
     });
   }
 
-  const hashedPassword = await bcrypt.hash("workstation", 12);
+  const seedPassword = process.env.SEED_ADMIN_PASSWORD;
+  if (!seedPassword || seedPassword.length < 12) {
+    throw new Error("SEED_ADMIN_PASSWORD must be set and contain at least 12 characters before running the seed.");
+  }
+  const hashedPassword = await bcrypt.hash(seedPassword, 12);
   // =========================
   // 2. SUPER ADMIN
   // =========================

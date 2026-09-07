@@ -5,9 +5,22 @@ const rateLimit = require("express-rate-limit");
 
 const app = express();
 
+const configuredFrontendUrl = (process.env.FRONTEND_URL || "").replace(/\/$/, "");
+const allowedOrigins = new Set([
+  configuredFrontendUrl,
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+].filter(Boolean));
+
 app.use(
   cors({
-    origin: "*"}),
+    origin(origin, callback) {
+      // Non-browser clients (health checks, curl, server-to-server calls)
+      // have no Origin header and should remain usable.
+      if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+      return callback(new Error("Origin not allowed by CORS."));
+    },
+  }),
 );
 // SECURITY FIX: helmet was already listed as a dependency in package.json
 // but never actually applied anywhere — the standard security headers
@@ -38,14 +51,14 @@ app.use(helmet());
 // });
 
 app.use("/api/v1/auth", rateLimit({
-  windowMs: 15 * 60 * 10000,
-  max: 3000,
+  windowMs: 15 * 60 * 1000,
+  max: 30,
   standardHeaders: true,
   legacyHeaders: false,
 }) );
 app.use("/api/v1", rateLimit({
-  windowMs: 15 * 60 * 10000,
-  max: 3000,
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
 }) );
@@ -88,7 +101,9 @@ app.get("/health", async (req, res) => {
       .json({
         status: "degraded",
         database: "unreachable",
-        error: error.message,
+        error: process.env.NODE_ENV === "production"
+          ? "Database health check failed."
+          : error.message,
       });
   }
 });

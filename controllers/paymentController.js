@@ -37,7 +37,10 @@ const initializePayment = async (req, res, next) => {
 
 const verifyPayment = async (req, res, next) => {
   try {
-    const result = await paymentService.verifyPayment(req.params.reference);
+    const result = await paymentService.verifyPayment({
+      reference: req.params.reference,
+      userId: req.user.id,
+    });
 
     return res.status(200).json({
       success: true,
