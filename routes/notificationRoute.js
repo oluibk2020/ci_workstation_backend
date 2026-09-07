@@ -6,6 +6,7 @@ const {
   validateNotificationQuery,
   validateBroadcastNotification,
   validateBroadcastEmail,
+  validateUserEmail,
 } = require("../validators/notificationValidator");
 
 const authMiddleware = require("../middleware/authMiddleware");
@@ -37,11 +38,18 @@ router.post(
   notificationController.broadcastEmail,
 );
 
+router.post(
+  "/email/:userId",
+  authMiddleware,
+  requireRole("SUPER_ADMIN"),
+  validateUserEmail,
+  notificationController.sendEmailToUser,
+);
+
 router.get(
   "/",
   authMiddleware,
   validateNotificationQuery,
-  validateBroadcastNotification,
   notificationController.getMyNotifications,
 );
 
