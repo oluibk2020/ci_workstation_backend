@@ -1,16 +1,14 @@
 const prisma = require("../helper/prisma");
 const { getTodayForTimezone } = require("../helper/businessDate");
 
-
 const checkIn = async ({
   actorUserId,
   actorRole,
   bookingDateId,
   targetUserId,
 }) => {
-
   // Determine who is being checked in
-  
+
   const userId = targetUserId || actorUserId;
 
   if (
@@ -21,8 +19,8 @@ const checkIn = async ({
     throw new Error("You are not authorized to check in another user.");
   }
 
- // Determine the source of the check-in
-  
+  // Determine the source of the check-in
+
   let source;
   let verifiedByUserId = null;
 
@@ -45,7 +43,7 @@ const checkIn = async ({
       throw new Error("You are not authorized to perform check-in.");
   }
 
-// Retrieve the BookingDate
+  // Retrieve the BookingDate
 
   const bookingDate = await prisma.bookingDate.findUnique({
     where: {
@@ -86,12 +84,11 @@ const checkIn = async ({
     throw new Error("This booking date is no longer active.");
   }
 
-  
   if (bookingDate.booking.status !== "ACTIVE") {
     throw new Error("This booking is no longer active.");
   }
 
- // Make sure the selected user is the beneficiary
+  // Make sure the selected user is the beneficiary
 
   if (bookingDate.beneficiaryUserId !== userId) {
     throw new Error("This booking does not belong to the selected user.");
@@ -130,19 +127,18 @@ const checkIn = async ({
     );
   }
 
-// Verify that the booking date is TODAY at the branch
-  
+  // Verify that the booking date is TODAY at the branch
+
   const branchToday = getTodayForTimezone(bookingDate.booking.branch.timezone);
 
- 
   const bookingDateString = bookingDate.bookingDate.toISOString().slice(0, 10);
 
   if (bookingDateString !== branchToday) {
     throw new Error("Check-in is only available for today's booking.");
   }
 
-// Prevent duplicate check-in
- 
+  // Prevent duplicate check-in
+
   const existingCheckIn = await prisma.checkIn.findUnique({
     where: {
       bookingDateId,
@@ -153,9 +149,8 @@ const checkIn = async ({
     throw new Error("User is already checked in for this booking.");
   }
 
- 
-   // Create CheckIn
-   
+  // Create CheckIn
+
   try {
     const checkInRecord = await prisma.checkIn.create({
       data: {
@@ -190,7 +185,6 @@ const checkIn = async ({
 
     return checkInRecord;
   } catch (error) {
-   
     if (error?.code === "P2002") {
       throw new Error("User is already checked in for this booking.");
     }
@@ -202,8 +196,7 @@ const checkIn = async ({
 // CHECK OUT
 
 const checkOut = async ({ actorUserId, actorRole, checkInId }) => {
-
- // Find the existing check-in
+  // Find the existing check-in
 
   const checkIn = await prisma.checkIn.findUnique({
     where: {
@@ -228,12 +221,11 @@ const checkOut = async ({ actorUserId, actorRole, checkInId }) => {
     throw new Error("Check-in record not found.");
   }
 
-// 2. Prevent duplicate checkout
-   
+  // 2. Prevent duplicate checkout
+
   if (checkIn.status !== "CHECKED_IN") {
     throw new Error("This check-in has already been checked out.");
   }
-
 
   const isPrivilegedActor = ["STAFF", "SUPER_ADMIN"].includes(actorRole);
 
@@ -241,9 +233,8 @@ const checkOut = async ({ actorUserId, actorRole, checkInId }) => {
     throw new Error("You are not authorized to check out this user.");
   }
 
-  
-//    Update the check-in
-   
+  //    Update the check-in
+
   const updatedCheckIn = await prisma.checkIn.update({
     where: {
       id: checkInId,
@@ -271,7 +262,90 @@ const checkOut = async ({ actorUserId, actorRole, checkInId }) => {
   return updatedCheckIn;
 };
 
+// GET USER CHECK-INS
+
+const getUserCheckIns = async ({ userId, page = 1, limit = 20, status }) => {
+  const currentPage = Math.max(Number(page) || 1, 1);
+  const pageSize = Math.min(Math.max(Number(limit) || 20, 1), 100);
+
+  const skip = (currentPage - 1) * pageSize;
+
+  const where = {
+    userId,
+  };
+
+  if (status) {
+    where.status = status; // CHECKED_IN or CHECKED_OUT
+  }
+
+  const [total, checkIns] = await prisma.$transaction([
+    prisma.checkIn.count({
+      where,
+    }),
+
+    prisma.checkIn.findMany({
+      where,
+
+      orderBy: {
+        checkedInAt: "desc",
+      },
+
+      skip,
+      take: pageSize,
+
+      select: {
+        id: true,
+        bookingDateId: true,
+        userId: true,
+        branchId: true,
+        seatId: true,
+        status: true,
+        source: true,
+        checkedInAt: true,
+        checkedOutAt: true,
+        verifiedByUserId: true,
+
+        // Include booking and branch details
+        bookingDate: {
+          select: {
+            id: true,
+            bookingDate: true,
+            amount: true,
+            booking: {
+              select: {
+                id: true,
+                type: true,
+                status: true,
+                workstation: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
+  return {
+    checkIns,
+
+    pagination: {
+      page: currentPage,
+      limit: pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+      hasNextPage: currentPage < Math.ceil(total / pageSize),
+      hasPreviousPage: currentPage > 1,
+    },
+  };
+};
+
 module.exports = {
   checkIn,
   checkOut,
+  getUserCheckIns,
 };

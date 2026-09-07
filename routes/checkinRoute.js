@@ -9,6 +9,8 @@ const router = express.Router();
 
 router.post("/", authMiddleware, validateCheckIn, checkInController.checkIn);
 
+router.get("/", authMiddleware, checkInController.getUserCheckIns);
+
 router.patch(
   "/:checkInId/checkout",
   authMiddleware,

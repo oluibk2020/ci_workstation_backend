@@ -53,8 +53,8 @@ const checkOut = async (req, res, next) => {
       checkInId: req.params.checkInId,
     });
 
-//     Notify connected dashboards that the user has checked out.
-  
+    //     Notify connected dashboards that the user has checked out.
+
     try {
       const io = getIO();
 
@@ -83,7 +83,27 @@ const checkOut = async (req, res, next) => {
   }
 };
 
+const getUserCheckIns = async (req, res, next) => {
+  try {
+    const result = await checkInService.getUserCheckIns({
+      userId: req.user.id,
+      page: req.query.page,
+      limit: req.query.limit,
+      status: req.query.status, // Optional: filter by CHECKED_IN or CHECKED_OUT
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Check-ins retrieved successfully.",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
-    checkIn,
-    checkOut
+  checkIn,
+  checkOut,
+  getUserCheckIns,
 };
