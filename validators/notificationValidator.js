@@ -65,7 +65,26 @@ const validateBroadcastNotification = (req, res, next) => {
   next();
 };
 
+
+const validateBroadcastEmail = (req, res, next) => {
+  const { subject, message } = req.body;
+  if (typeof subject !== "string" || !subject.trim()) {
+    return res.status(400).json({ success: false, message: "Email subject is required." });
+  }
+  if (typeof message !== "string" || !message.trim()) {
+    return res.status(400).json({ success: false, message: "Email message is required." });
+  }
+  if (subject.trim().length > 180) {
+    return res.status(400).json({ success: false, message: "Email subject must be 180 characters or fewer." });
+  }
+  if (message.trim().length > 10000) {
+    return res.status(400).json({ success: false, message: "Email message must be 10,000 characters or fewer." });
+  }
+  next();
+};
+
 module.exports = {
   validateNotificationQuery,
   validateBroadcastNotification,
+  validateBroadcastEmail,
 };
