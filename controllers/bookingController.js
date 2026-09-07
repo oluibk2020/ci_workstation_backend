@@ -27,17 +27,12 @@ const createBooking = async (req, res, next) => {
 //  GET MY BOOKINGS
 const getMyBookings = async (req, res, next) => {
   try {
-
     // BUG FIX: was req.user.sub — authMiddleware only ever sets
     // req.user.id (never .sub), so this was always undefined and this
     // endpoint could never actually return anyone's bookings.
     const userId = req.user.id;
 
-    const {
-      status,
-      page = 1,
-      limit = 20,
-    } = req.query;
+    const { status, page = 1, limit = 20 } = req.query;
 
     const result = await bookingService.getMyBookings({
       userId,
@@ -59,14 +54,12 @@ const getMyBookings = async (req, res, next) => {
 //---------------------------------------------------------------------------
 
 //   GET ONE BOOKING
- 
+
 const getBookingById = async (req, res, next) => {
   try {
-    
     // BUG FIX: same as above — was req.user.sub.
     const userId = req.user.id;
 
-    
     const { bookingId } = req.params;
 
     const booking = await bookingService.getBookingById({
@@ -148,15 +141,34 @@ const getTodaysBookings = async (req, res, next) => {
   }
 };
 
-//-------------------------------------------------------------------------
+// ALL BOOKINGS — Staff/Super Admin only. See
+// services/bookingService.js's getAllBookingsAdmin header.
+const getAllBookingsAdmin = async (req, res, next) => {
+  try {
+    const { page, limit, status, branchId } = req.query;
+    const result = await bookingService.getAllBookingsAdmin({
+      page,
+      limit,
+      status,
+      branchId,
+    });
 
-// REASSIGNMENT HISTORY — Staff/Super Admin only (enforced at the route
-// layer). See services/reassignmentService.js header for why this is a
-// history/audit log rather than a pending-requests queue.
+    return res.status(200).json({
+      success: true,
+      message: "All bookings retrieved successfully.",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// REASSIGNMENT HISTORY — see services/reassignmentService.js's
+// getReassignmentHistory header for why this is a history log, not a
+// "requests" queue.
 const getReassignmentHistory = async (req, res, next) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
-
+    const { page, limit } = req.query;
     const result = await reassignmentService.getReassignmentHistory({
       page,
       limit,
@@ -182,4 +194,5 @@ module.exports = {
   reassignBooking,
   getTodaysBookings,
   getReassignmentHistory,
+  getAllBookingsAdmin,
 };

@@ -88,9 +88,26 @@ const updateSeatStatus = async (req, res, next) => {
   }
 };
 
+// NEW — Admin-only, returns ALL statuses. See services/seatService.js's
+// getAllSeatsByWorkstationAdmin header.
+const getAllSeatsByWorkstationAdmin = async (req, res, next) => {
+  try {
+    const seats = await seatService.getAllSeatsByWorkstationAdmin(req.params.workstationId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Seats retrieved successfully.",
+      data: { seats },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createSeat,
   getSeatsByWorkstation,
+  getAllSeatsByWorkstationAdmin,
   getSeatById,
   updateSeat,
   updateSeatStatus,

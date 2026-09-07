@@ -132,9 +132,31 @@ const updateSeatStatus = async (id, status) => {
   });
 };
 
+/**
+ * NEW — same bug fix as workStationService.js's
+ * getAllWorkstationsByBranchAdmin. Admin-only, no status filter, so a
+ * seat set to INACTIVE remains visible and manageable instead of
+ * disappearing permanently.
+ */
+const getAllSeatsByWorkstationAdmin = async (workstationId) => {
+  const workstation = await prisma.workstation.findUnique({
+    where: { id: workstationId },
+  });
+
+  if (!workstation) {
+    throw new Error("Workstation not found.");
+  }
+
+  return prisma.seat.findMany({
+    where: { workstationId },
+    orderBy: { seatId: "asc" },
+  });
+};
+
 module.exports = {
   createSeat,
   getSeatsByWorkstation,
+  getAllSeatsByWorkstationAdmin,
   getSeatById,
   updateSeat,
   updateSeatStatus,

@@ -53,7 +53,13 @@ const auth = async (req, res, next) => {
 
     const currentUser = await prisma.user.findUnique({
       where: { id: decoded.sub },
-      select: { id: true, role: true, status: true },
+      // BUG FIX: `email` was never selected here, meaning req.user.email
+      // was always undefined everywhere in the app — including
+      // paymentController.initializePayment, which relied on it as the
+      // email sent to Paystack. Paystack requires an email to initialize
+      // a payment, so this call has been failing outright the whole time
+      // it's existed, not just recently.
+      select: { id: true, email: true, role: true, status: true },
     });
 
     if (!currentUser) {
@@ -72,6 +78,7 @@ const auth = async (req, res, next) => {
 
     req.user = {
       id: currentUser.id,
+      email: currentUser.email,
       role: currentUser.role, // live value, not the token's stale claim
     };
 
