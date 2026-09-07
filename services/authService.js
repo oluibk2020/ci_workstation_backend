@@ -12,7 +12,9 @@ const TERMS_VERSION = process.env.TERMS_VERSION || "1.0";
 
 const register = async ({ name, email, password, termsAccepted }) => {
   if (termsAccepted !== true) {
-    throw new Error("You must read and accept the Terms and Conditions before creating an account.");
+    throw new Error(
+      "You must read and accept the Terms and Conditions before creating an account.",
+    );
   }
   const normalizeEmail = email.toLowerCase().trim();
 
@@ -86,9 +88,6 @@ const register = async ({ name, email, password, termsAccepted }) => {
 //------------------------------------------------
 
 const googleLogin = async ({ idToken, termsAccepted }) => {
-  if (termsAccepted !== true) {
-    throw new Error("You must read and accept the Terms and Conditions before creating an account.");
-  }
   if (!process.env.GOOGLE_CLIENT_ID) {
     throw new Error("GOOGLE_CLIENT_ID is not configured.");
   }
