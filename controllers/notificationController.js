@@ -159,6 +159,50 @@ const broadcastEmail = async (req, res, next) => {
   }
 };
 
+const sendEmailToUser = async (req, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.params.userId },
+      select: { id: true, name: true, email: true, status: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+    if (user.status !== "ACTIVE") {
+      return res.status(400).json({ success: false, message: "Email can only be sent to an active user." });
+    }
+    if (!user.email?.trim()) {
+      return res.status(400).json({ success: false, message: "This user does not have an email address." });
+    }
+
+    await mailService.sendUserEmail({
+      to: user.email,
+      subject: req.body.subject,
+      message: req.body.message,
+    });
+
+    auditLogService.log({
+      actorUserId: req.user.id,
+      action: "INDIVIDUAL_EMAIL_SENT",
+      entityType: "USER",
+      entityId: user.id,
+      metadata: {
+        subject: req.body.subject.trim(),
+        recipientEmail: user.email,
+      },
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: `Email sent successfully to ${user.name}.`,
+      data: { userId: user.id, email: user.email },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getMyNotifications,
   getNotificationById,
@@ -166,4 +210,5 @@ module.exports = {
   markAllNotificationsAsRead,
   broadcastNotification,
   broadcastEmail,
+  sendEmailToUser,
 };

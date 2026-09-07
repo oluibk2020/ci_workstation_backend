@@ -223,6 +223,42 @@ const sendPasswordResetEmail = async ({ email, token }) => {
 // Sends the same plain-text announcement to groups of active users using BCC.
 // BCC keeps recipient email addresses private. Batching avoids creating an
 // enormous single SMTP message when the user base grows.
+const sendUserEmail = async ({ to, subject, message }) => {
+  if (!to || typeof to !== "string") throw new Error("Recipient email is required.");
+  if (!subject || typeof subject !== "string" || !subject.trim()) throw new Error("Email subject is required.");
+  if (!message || typeof message !== "string" || !message.trim()) throw new Error("Email message is required.");
+
+  const safeSubject = subject.trim();
+  const safeMessage = message.trim();
+  const escapedMessage = safeMessage
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/\r?\n/g, "<br>");
+
+  await transporter.sendMail({
+    from: `"CharisIntelligence Workstation" <${process.env.EMAIL_USER}>`,
+    to: to.trim(),
+    subject: safeSubject,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;background:#fff;">
+        <div style="background:#2563eb;color:#fff;padding:22px;text-align:center;">
+          <h1 style="margin:0;font-size:22px;">CharisIntelligence Workstation</h1>
+        </div>
+        <div style="padding:30px;color:#1e293b;line-height:1.7;">
+          <h2 style="margin-top:0;">${safeSubject}</h2>
+          <p>${escapedMessage}</p>
+          <hr style="border:0;border-top:1px solid #e2e8f0;margin:28px 0;">
+          <small style="color:#64748b;">This email was sent by the Workstation administration team.</small>
+        </div>
+      </div>
+    `,
+    text: safeMessage,
+  });
+};
+
 const sendBroadcastEmail = async ({ subject, message, recipients, batchSize = 50 }) => {
   if (!subject || typeof subject !== "string" || !subject.trim()) {
     throw new Error("Email subject is required.");
@@ -294,5 +330,6 @@ module.exports = {
   sendSuspensionEmail,
   sendBookingEmail,
   sendPasswordResetEmail,
+  sendUserEmail,
   sendBroadcastEmail,
 };
