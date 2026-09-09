@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
+const prisma = require("./helper/prisma");
 
 const app = express();
 app.set("trust proxy", 1);
@@ -80,11 +81,15 @@ app.use(express.json({ limit: "10mb" }));
  * database connection is dead — that's exactly the case this is meant
  * to catch.
  */
+
 app.get("/health", async (req, res) => {
   try {
-    const prisma = require("./helper/prisma");
     await prisma.$queryRaw`SELECT 1`;
-    return res.status(200).json({ status: "ok", database: "connected" });
+
+    return res.status(200).json({
+      status: "ok",
+      database: "connected",
+    });
   } catch (error) {
     return res.status(503).json({
       status: "degraded",
