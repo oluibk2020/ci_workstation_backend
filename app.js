@@ -5,22 +5,8 @@ const rateLimit = require("express-rate-limit");
 
 const app = express();
 
-const configuredFrontendUrl = (process.env.FRONTEND_URL || "").replace(/\/$/, "");
-const allowedOrigins = new Set([
-  configuredFrontendUrl,
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
-].filter(Boolean));
-
 app.use(
-  cors({
-    origin(origin, callback) {
-      // Non-browser clients (health checks, curl, server-to-server calls)
-      // have no Origin header and should remain usable.
-      if (!origin || allowedOrigins.has(origin)) return callback(null, true);
-      return callback(new Error("Origin not allowed by CORS."));
-    },
-  }),
+  cors(),
 );
 // SECURITY FIX: helmet was already listed as a dependency in package.json
 // but never actually applied anywhere — the standard security headers
