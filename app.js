@@ -4,10 +4,9 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 
 const app = express();
+app.set("trust proxy", 1);
 
-app.use(
-  cors(),
-);
+app.use(cors());
 // SECURITY FIX: helmet was already listed as a dependency in package.json
 // but never actually applied anywhere — the standard security headers
 // (X-Content-Type-Options, X-Frame-Options, a baseline CSP, etc.) were
@@ -36,19 +35,24 @@ app.use(helmet());
 //   },
 // });
 
-app.use("/api/v1/auth", rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-}) );
-app.use("/api/v1", rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 1000,
-  standardHeaders: true,
-  legacyHeaders: false,
-}) );
-
+app.use(
+  "/api/v1/auth",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
+app.use(
+  "/api/v1",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 1000,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
 
 app.use(
   "/api/v1/payments/paystack/webhook",
@@ -82,15 +86,14 @@ app.get("/health", async (req, res) => {
     await prisma.$queryRaw`SELECT 1`;
     return res.status(200).json({ status: "ok", database: "connected" });
   } catch (error) {
-    return res
-      .status(503)
-      .json({
-        status: "degraded",
-        database: "unreachable",
-        error: process.env.NODE_ENV === "production"
+    return res.status(503).json({
+      status: "degraded",
+      database: "unreachable",
+      error:
+        process.env.NODE_ENV === "production"
           ? "Database health check failed."
           : error.message,
-      });
+    });
   }
 });
 

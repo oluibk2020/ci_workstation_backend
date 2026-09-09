@@ -102,8 +102,9 @@ const completePaymentIfNeeded = async ({
     return payment;
   }
 
-  if (Number(payment.amount) !== amountPaidInNaira) {
-    throw new Error("Payment amount mismatch.");
+
+  if ( amountPaidInNaira < Number(payment.amount) ) {
+    throw new Error("Amount paid is less than the expected amount.");
   }
 
   return prisma.$transaction(async (tx) => {
